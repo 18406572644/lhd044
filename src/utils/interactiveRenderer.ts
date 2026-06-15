@@ -1,4 +1,4 @@
-import type { CountdownItem, WallpaperStyle, InteractiveWallpaperConfig, InteractiveState, InteractiveAction } from '@/types'
+import type { CountdownItem, WallpaperStyle, InteractiveWallpaperConfig, InteractiveState } from '@/types'
 import { calculateDiff, formatDate, padZero } from '@/utils'
 import { InteractiveWallpaperEngine, type CountdownHitBox } from '@/utils/interactiveWallpaper'
 
@@ -36,6 +36,7 @@ export class InteractiveRenderer {
   private isRunning = false
   private lastTickTime = 0
   private tickInterval = 1000
+  private hasData = false
 
   constructor() {
     this.engine = new InteractiveWallpaperEngine({
@@ -52,6 +53,10 @@ export class InteractiveRenderer {
 
   getEngine(): InteractiveWallpaperEngine {
     return this.engine!
+  }
+
+  setHasData(value: boolean) {
+    this.hasData = value
   }
 
   mount(canvas: HTMLCanvasElement) {
@@ -96,6 +101,7 @@ export class InteractiveRenderer {
   updateOptions(options: InteractiveRenderOptions) {
     this.currentCountdown = options.countdown
     this.currentStyle = options.style
+    this.hasData = true
     this.engine!.updateConfig(options.interactiveConfig)
     this.renderStaticBackground(options)
   }
@@ -104,7 +110,6 @@ export class InteractiveRenderer {
     if (this.isRunning) return
     this.isRunning = true
     this.lastTickTime = performance.now()
-    this.engine!.start()
     this.renderLoop()
   }
 
@@ -114,7 +119,6 @@ export class InteractiveRenderer {
       cancelAnimationFrame(this.animationId)
       this.animationId = null
     }
-    this.engine!.stop()
   }
 
   private renderLoop() {
@@ -123,23 +127,68 @@ export class InteractiveRenderer {
     const now = performance.now()
     if (now - this.lastTickTime >= this.tickInterval) {
       this.lastTickTime = now
-      this.renderStaticBackground({
-        width: this.canvas.width,
-        height: this.canvas.height,
-        countdown: this.currentCountdown!,
-        style: this.currentStyle,
-        interactiveConfig: this.engine!['config'],
-        interactiveState: this.engine!.getState()
-      })
+      if (this.currentCountdown && this.hasData) {
+        this.renderStaticBackground({
+          width: this.canvas.width,
+          height: this.canvas.height,
+          countdown: this.currentCountdown,
+          style: this.currentStyle,
+          interactiveConfig: this.engine!['config'],
+          interactiveState: this.engine!.getState()
+        })
+      }
+    }
+
+    if (this.hasData) {
+      this.engine!.update()
     }
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
 
-    if (this.bgCanvas) {
+    if (this.bgCanvas && this.hasData) {
       this.ctx.drawImage(this.bgCanvas, 0, 0)
     }
 
+    if (this.hasData) {
+      this.engine!.renderDynamic(this.ctx)
+    } else {
+      this.renderLoading(this.ctx)
+    }
+
     this.animationId = requestAnimationFrame(() => this.renderLoop())
+  }
+
+  private renderLoading(ctx: CanvasRenderingContext2D) {
+    const w = this.canvas?.width || window.innerWidth
+    const h = this.canvas?.height || window.innerHeight
+    const cx = w / 2
+    const cy = h / 2
+
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.7)
+    gradient.addColorStop(0, '#1a1a2e')
+    gradient.addColorStop(1, '#0f0f1a')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, w, h)
+
+    ctx.save()
+    ctx.font = '300 20px -apple-system, "PingFang SC", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+    ctx.fillText('正在加载交互式壁纸...', cx, cy)
+
+    const t = performance.now() * 0.003
+    for (let i = 0; i < 8; i++) {
+      const angle = t + i * Math.PI * 0.25
+      const r = 40
+      const x = cx + Math.cos(angle) * r
+      const y = cy + 40 + Math.sin(angle) * r
+      const size = 3 + Math.sin(t * 2 + i) * 1.5
+      ctx.beginPath()
+      ctx.arc(x, y, size, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(126, 200, 227, ${0.3 + Math.sin(t + i) * 0.3})`
+      ctx.fill()
+    }
+    ctx.restore()
   }
 
   private renderStaticBackground(options: InteractiveRenderOptions) {

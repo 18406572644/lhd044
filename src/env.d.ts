@@ -53,9 +53,12 @@ interface ElectronAPI {
   interactiveWallpaperSendAction: (action: string) => Promise<boolean>
   interactiveWallpaperIsRunning: () => Promise<boolean>
   interactiveWallpaperUpdateData: (data: any) => Promise<boolean>
+  interactiveWallpaperRequestData: () => Promise<boolean>
 
   onInteractiveAction: (callback: (action: string) => void) => () => void
   onWallpaperUpdateData: (callback: (data: any) => void) => () => void
+  onWallpaperRequestData: (callback: () => void) => () => void
+  onWallpaperWindowReady: (callback: () => void) => () => void
 
   selectImageFile: () => Promise<string | null>
   saveBackupFile: (content: string, filename: string) => Promise<boolean>

@@ -18,6 +18,7 @@ let miniWindow: BrowserWindow | null = null
 let interactiveWallpaperWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let wallpaperUpdateTimer: NodeJS.Timeout | null = null
+let isQuitting = false
 
 const preload = join(__dirname, '../dist-electron/preload.js')
 const url = process.env.VITE_DEV_SERVER_URL
@@ -67,7 +68,7 @@ function createWindow() {
   })
 
   mainWindow.on('close', (e) => {
-    if (process.platform !== 'darwin') {
+    if (process.platform !== 'darwin' && !isQuitting) {
       e.preventDefault()
       mainWindow?.hide()
     }
@@ -159,6 +160,7 @@ function createInteractiveWallpaperWindow() {
     show: false,
     hasShadow: false,
     backgroundColor: '#00000000',
+    focusable: true,
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -167,7 +169,7 @@ function createInteractiveWallpaperWindow() {
     }
   })
 
-  interactiveWallpaperWindow.setAlwaysOnTop(true, 'screen-saver')
+  interactiveWallpaperWindow.setAlwaysOnTop(true, 'normal')
   interactiveWallpaperWindow.setVisibleOnAllWorkspaces(true)
   interactiveWallpaperWindow.setIgnoreMouseEvents(false)
 
@@ -183,6 +185,10 @@ function createInteractiveWallpaperWindow() {
 
   interactiveWallpaperWindow.once('ready-to-show', () => {
     interactiveWallpaperWindow?.showInactive()
+  })
+
+  interactiveWallpaperWindow.webContents.on('did-finish-load', () => {
+    interactiveWallpaperWindow?.webContents.send('wallpaper:window-ready')
   })
 }
 
@@ -261,6 +267,9 @@ function createTray() {
     {
       label: '退出',
       click: () => {
+        isQuitting = true
+        miniWindow?.close()
+        interactiveWallpaperWindow?.close()
         app.quit()
       }
     }
@@ -428,11 +437,25 @@ ipcMain.handle('wallpaper:interactive-is-running', () => {
 })
 
 ipcMain.handle('wallpaper:interactive-update-data', (_e, data: any) => {
-  if (interactiveWallpaperWindow) {
+  if (interactiveWallpaperWindow && !interactiveWallpaperWindow.isDestroyed()) {
     interactiveWallpaperWindow.webContents.send('wallpaper:update-data', data)
     return true
   }
   return false
+})
+
+ipcMain.handle('wallpaper:interactive-request-data', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wallpaper:request-data')
+    return true
+  }
+  return false
+})
+
+ipcMain.on('wallpaper:window-ready', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wallpaper:request-data')
+  }
 })
 
 ipcMain.handle('data:save', async (_e, data: any) => {

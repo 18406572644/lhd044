@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   interactiveWallpaperIsRunning: () => ipcRenderer.invoke('wallpaper:interactive-is-running'),
   interactiveWallpaperUpdateData: (data: any) =>
     ipcRenderer.invoke('wallpaper:interactive-update-data', data),
+  interactiveWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:interactive-request-data'),
 
   onInteractiveAction: (callback: (action: string) => void) => {
     const handler = (_e: any, action: string) => callback(action)
@@ -66,6 +67,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_e: any, data: any) => callback(data)
     ipcRenderer.on('wallpaper:update-data', handler)
     return () => ipcRenderer.removeListener('wallpaper:update-data', handler)
+  },
+
+  onWallpaperRequestData: (callback: () => void) => {
+    const handler = (_e: any) => callback()
+    ipcRenderer.on('wallpaper:request-data', handler)
+    return () => ipcRenderer.removeListener('wallpaper:request-data', handler)
+  },
+
+  onWallpaperWindowReady: (callback: () => void) => {
+    const handler = (_e: any) => callback()
+    ipcRenderer.on('wallpaper:window-ready', handler)
+    return () => ipcRenderer.removeListener('wallpaper:window-ready', handler)
   },
 
   selectImageFile: () => ipcRenderer.invoke('dialog:select-image'),

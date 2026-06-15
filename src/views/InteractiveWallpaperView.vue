@@ -1,5 +1,5 @@
 <template>
-  <div class="interactive-wallpaper">
+  <div class="interactive-wallpaper" id="interactive-wallpaper-root">
     <canvas ref="wallpaperCanvas" class="wallpaper-canvas" />
   </div>
 </template>
@@ -23,8 +23,17 @@ let currentState: InteractiveState = 'idle'
 function initCanvas() {
   if (!wallpaperCanvas.value) return
   const canvas = wallpaperCanvas.value
-  canvas.width = window.screen.width
-  canvas.height = window.screen.height
+
+  const screenWidth = window.innerWidth || window.screen.width
+  const screenHeight = window.innerHeight || window.screen.height
+  canvas.width = screenWidth
+  canvas.height = screenHeight
+
+  const root = document.getElementById('interactive-wallpaper-root')
+  if (root) {
+    root.style.width = screenWidth + 'px'
+    root.style.height = screenHeight + 'px'
+  }
 
   renderer = new InteractiveRenderer()
   renderer.mount(canvas)
@@ -40,16 +49,17 @@ function initCanvas() {
     currentState = state
   })
 
-  if (currentCountdown && currentConfig) {
-    renderer.updateOptions({
-      width: canvas.width,
-      height: canvas.height,
-      countdown: currentCountdown,
-      style: currentStyle,
-      interactiveConfig: currentConfig,
-      interactiveState: currentState
-    })
-    renderer.start()
+  renderer.start()
+
+  requestData()
+}
+
+function requestData() {
+  if (window.electronAPI) {
+    window.electronAPI.interactiveWallpaperRequestData()
+      .catch(() => {
+        setTimeout(requestData, 1000)
+      })
   }
 }
 
@@ -57,20 +67,47 @@ function handleUpdateData(data: any) {
   if (data.countdown) currentCountdown = data.countdown
   if (data.style) currentStyle = data.style
   if (data.interactiveConfig) currentConfig = data.interactiveConfig
-  if (data.allCountdowns) {
-    // available for future use
-  }
 
   if (renderer && currentCountdown && currentConfig) {
     renderer.updateOptions({
-      width: wallpaperCanvas.value?.width || window.screen.width,
-      height: wallpaperCanvas.value?.height || window.screen.height,
+      width: wallpaperCanvas.value?.width || window.innerWidth,
+      height: wallpaperCanvas.value?.height || window.innerHeight,
       countdown: currentCountdown,
       style: currentStyle,
       interactiveConfig: currentConfig,
       interactiveState: currentState
     })
-    renderer.start()
+    renderer.setHasData(true)
+  }
+}
+
+function handleResize() {
+  const canvas = wallpaperCanvas.value
+  if (!canvas || !renderer) return
+
+  const screenWidth = window.innerWidth || window.screen.width
+  const screenHeight = window.innerHeight || window.screen.height
+
+  canvas.width = screenWidth
+  canvas.height = screenHeight
+
+  const root = document.getElementById('interactive-wallpaper-root')
+  if (root) {
+    root.style.width = screenWidth + 'px'
+    root.style.height = screenHeight + 'px'
+  }
+
+  renderer.resize(screenWidth, screenHeight)
+
+  if (currentCountdown && currentConfig) {
+    renderer.updateOptions({
+      width: screenWidth,
+      height: screenHeight,
+      countdown: currentCountdown,
+      style: currentStyle,
+      interactiveConfig: currentConfig,
+      interactiveState: currentState
+    })
   }
 }
 
@@ -83,12 +120,10 @@ onMounted(() => {
     })
   }
 
-  window.addEventListener('resize', () => {
-    if (wallpaperCanvas.value && renderer) {
-      wallpaperCanvas.value.width = window.screen.width
-      wallpaperCanvas.value.height = window.screen.height
-      renderer.resize(window.screen.width, window.screen.height)
-    }
+  window.addEventListener('resize', handleResize)
+
+  window.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
   })
 })
 
@@ -102,6 +137,7 @@ onUnmounted(() => {
     removeDataHandler()
     removeDataHandler = null
   }
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
@@ -115,11 +151,16 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   z-index: -1;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
 }
 
 .wallpaper-canvas {
   width: 100%;
   height: 100%;
   display: block;
+  pointer-events: auto;
+  cursor: default;
 }
 </style>

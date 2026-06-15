@@ -15,6 +15,7 @@ export function useWallpaper() {
   let removeTick: (() => void) | null = null
   let removeRefresh: (() => void) | null = null
   let removeInteractiveAction: (() => void) | null = null
+  let removeRequestData: (() => void) | null = null
   let rotateTimer: number | null = null
 
   async function generateAndSetWallpaper() {
@@ -131,12 +132,22 @@ export function useWallpaper() {
     if (!window.electronAPI || !isInteractiveRunning.value) return
     const countdown = store.activeCountdown
     if (!countdown) return
-    window.electronAPI.interactiveWallpaperUpdateData({
+    const data = {
       countdown,
       allCountdowns: store.wallpaperCountdowns,
       style: store.settings.currentWallpaperStyle,
       interactiveConfig: store.settings.interactiveConfig
-    })
+    }
+    window.electronAPI.interactiveWallpaperUpdateData(data)
+      .then((success) => {
+        if (!success) {
+          console.warn('Interactive wallpaper window not ready, retrying...')
+          setTimeout(syncInteractiveData, 500)
+        }
+      })
+      .catch(() => {
+        setTimeout(syncInteractiveData, 500)
+      })
   }
 
   function handleInteractiveAction(action: string) {
@@ -225,6 +236,9 @@ export function useWallpaper() {
       removeInteractiveAction = window.electronAPI.onInteractiveAction((action) => {
         handleInteractiveAction(action)
       })
+      removeRequestData = window.electronAPI.onWallpaperRequestData(() => {
+        syncInteractiveData()
+      })
     }
 
     startRotateTimer()
@@ -244,6 +258,7 @@ export function useWallpaper() {
     if (removeTick) removeTick()
     if (removeRefresh) removeRefresh()
     if (removeInteractiveAction) removeInteractiveAction()
+    if (removeRequestData) removeRequestData()
     if (window.electronAPI) {
       window.electronAPI.stopWallpaperAutoUpdate()
     }

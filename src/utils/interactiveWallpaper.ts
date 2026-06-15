@@ -66,18 +66,15 @@ export class InteractiveWallpaperEngine {
   private hotZoneRects: HotZoneRect[] = []
   private countdownHitBox: CountdownHitBox | null = null
   private state: InteractiveState = 'idle'
-  private animationId: number | null = null
-  private idleTimer: number | null = null
-  private lastFrameTime = 0
-  private frameCount = 0
-  private lastFpsTime = 0
-  private currentFps = 0
   private onAction: ((action: InteractiveAction) => void) | null = null
   private onStateChange: ((state: InteractiveState) => void) | null = null
   private doubleClickTimer: number | null = null
   private lastClickTime = 0
-  private isRunning = false
-  private throttledFrame = false
+  private lastUpdateTime = 0
+  private frameCount = 0
+  private lastFpsTime = 0
+  private currentFps = 0
+  private idleTimer: number | null = null
 
   constructor(config: InteractiveWallpaperConfig) {
     this.config = config
@@ -110,10 +107,12 @@ export class InteractiveWallpaperEngine {
     this.initParticles()
     this.rebuildHotZones()
     this.bindEvents()
+    this.lastUpdateTime = performance.now()
+    this.lastFpsTime = this.lastUpdateTime
   }
 
   unmount() {
-    this.stop()
+    this.stopIdleTimer()
     this.unbindEvents()
     this.canvas = null
     this.ctx = null
@@ -132,24 +131,33 @@ export class InteractiveWallpaperEngine {
     this.countdownHitBox = hitBox
   }
 
-  start() {
-    if (this.isRunning) return
-    this.isRunning = true
-    this.lastFrameTime = performance.now()
-    this.lastFpsTime = this.lastFrameTime
-    this.frameCount = 0
-    this.loop(this.lastFrameTime)
+  update() {
+    const now = performance.now()
+    const elapsed = now - this.lastUpdateTime
+    this.lastUpdateTime = now
+
+    this.frameCount++
+    if (now - this.lastFpsTime >= 1000) {
+      this.currentFps = this.frameCount
+      this.frameCount = 0
+      this.lastFpsTime = now
+    }
+
+    if (this.mouse.isMoving && now - this.mouse.lastMoveTime > 200) {
+      this.mouse.isMoving = false
+    }
+
+    this.updateMouse()
+    this.updateParticles()
+    this.updateIdleState(now)
   }
 
-  stop() {
-    this.isRunning = false
-    if (this.animationId !== null) {
-      cancelAnimationFrame(this.animationId)
-      this.animationId = null
-    }
-    if (this.idleTimer !== null) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
+  renderDynamic(ctx: CanvasRenderingContext2D) {
+    this.renderGlow(ctx)
+    this.renderParticles(ctx)
+    this.renderHotZones(ctx)
+    if (this.config.showCountdownClickHint && this.countdownHitBox) {
+      this.renderClickHint(ctx)
     }
   }
 
@@ -159,6 +167,10 @@ export class InteractiveWallpaperEngine {
 
   getFps(): number {
     return this.currentFps
+  }
+
+  getMouseState(): MouseState {
+    return { ...this.mouse }
   }
 
   private initParticles() {
@@ -232,6 +244,7 @@ export class InteractiveWallpaperEngine {
     this.canvas.addEventListener('click', this.handleClick)
     this.canvas.addEventListener('dblclick', this.handleDblClick)
     this.canvas.addEventListener('mouseleave', this.handleMouseLeave)
+    this.canvas.addEventListener('contextmenu', this.handleContextMenu)
   }
 
   private unbindEvents() {
@@ -240,6 +253,11 @@ export class InteractiveWallpaperEngine {
     this.canvas.removeEventListener('click', this.handleClick)
     this.canvas.removeEventListener('dblclick', this.handleDblClick)
     this.canvas.removeEventListener('mouseleave', this.handleMouseLeave)
+    this.canvas.removeEventListener('contextmenu', this.handleContextMenu)
+  }
+
+  private handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault()
   }
 
   private handleMouseMove = (e: MouseEvent) => {
@@ -315,10 +333,7 @@ export class InteractiveWallpaperEngine {
   }
 
   private resetIdleTimer() {
-    if (this.idleTimer !== null) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
-    }
+    this.stopIdleTimer()
     if (this.config.idleDetection.enabled) {
       this.idleTimer = window.setTimeout(() => {
         if (!this.mouse.isMoving) {
@@ -328,51 +343,17 @@ export class InteractiveWallpaperEngine {
     }
   }
 
+  private stopIdleTimer() {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+  }
+
   private setState(state: InteractiveState) {
     if (this.state === state) return
     this.state = state
     this.onStateChange?.(state)
-  }
-
-  private loop = (timestamp: number) => {
-    if (!this.isRunning) return
-
-    const elapsed = timestamp - this.lastFrameTime
-
-    if (elapsed < 16) {
-      this.animationId = requestAnimationFrame(this.loop)
-      return
-    }
-
-    if (elapsed > 100) {
-      this.lastFrameTime = timestamp
-      this.animationId = requestAnimationFrame(this.loop)
-      return
-    }
-
-    this.lastFrameTime = timestamp
-    this.frameCount++
-
-    if (timestamp - this.lastFpsTime >= 1000) {
-      this.currentFps = this.frameCount
-      this.frameCount = 0
-      this.lastFpsTime = timestamp
-    }
-
-    const now = performance.now()
-    if (this.mouse.isMoving && now - this.mouse.lastMoveTime > 200) {
-      this.mouse.isMoving = false
-    }
-
-    this.updateMouse()
-    this.updateParticles()
-    this.updateIdleState(now)
-
-    if (this.ctx && this.canvas) {
-      this.render()
-    }
-
-    this.animationId = requestAnimationFrame(this.loop)
   }
 
   private updateMouse() {
@@ -435,17 +416,6 @@ export class InteractiveWallpaperEngine {
     }
     if (this.state === 'idle' && this.mouse.isMoving) {
       this.setState('active')
-    }
-  }
-
-  private render() {
-    const ctx = this.ctx!
-    ctx.clearRect(0, 0, this.width, this.height)
-    this.renderGlow(ctx)
-    this.renderParticles(ctx)
-    this.renderHotZones(ctx)
-    if (this.config.showCountdownClickHint && this.countdownHitBox) {
-      this.renderClickHint(ctx)
     }
   }
 
