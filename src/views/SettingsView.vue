@@ -40,7 +40,7 @@
             </div>
             <n-switch
               v-model:value="store.settings.autoUpdateWallpaper"
-              :disabled="store.settings.wallpaperMode === 'interactive'"
+              :disabled="store.settings.wallpaperMode === 'interactive' || store.settings.wallpaperMode === 'animated'"
               @update:value="handleAutoUpdateChange"
             />
           </div>
@@ -217,6 +217,70 @@
               <div class="setting-desc">壁纸右下角显示可点击的快捷操作区域</div>
             </div>
             <n-switch :value="store.settings.interactiveConfig.hotZones.length > 0" @update:value="handleHotZoneToggle" />
+          </div>
+        </div>
+      </section>
+
+      <section class="setting-card" v-if="store.settings.wallpaperMode === 'animated'">
+        <h3 class="card-title">
+          <n-icon><PlayCircleOutlined /></n-icon>
+          动态壁纸设置
+        </h3>
+        <div class="setting-list">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">动画强度</div>
+              <div class="setting-desc">调节动画效果的整体强度，影响粒子数量和速度</div>
+            </div>
+            <n-select
+              v-model:value="store.settings.animatedConfig.intensity"
+              :options="intensityOptions"
+              style="width: 160px"
+            />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">帧率限制</div>
+              <div class="setting-desc">动态壁纸的渲染帧率，越高越流畅但越占用资源</div>
+            </div>
+            <n-select
+              v-model:value="store.settings.animatedConfig.fpsLimit"
+              :options="fpsOptions"
+              style="width: 140px"
+            />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">数字翻转动画</div>
+              <div class="setting-desc">倒计时数字变化时带有平滑的翻牌/滚动效果</div>
+            </div>
+            <n-switch v-model:value="store.settings.animatedConfig.numberFlip" />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">呼吸光效</div>
+              <div class="setting-desc">根据剩余时间紧迫程度，壁纸边缘呈现不同频率的呼吸光效</div>
+            </div>
+            <n-switch v-model:value="store.settings.animatedConfig.breathingGlow" />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">粒子流动</div>
+              <div class="setting-desc">背景有缓慢流动的粒子效果，粒子密度随倒计时主题变化</div>
+            </div>
+            <n-switch v-model:value="store.settings.animatedConfig.particleFlow" />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">时间进度条</div>
+              <div class="setting-desc">壁纸底部显示一条细微的进度条，从创建日期到目标日期</div>
+            </div>
+            <n-switch v-model:value="store.settings.animatedConfig.progressBar" />
           </div>
         </div>
       </section>
@@ -546,7 +610,8 @@ import {
   DeleteOutlined,
   FileOutlined,
   WarningOutlined,
-  BulbOutlined
+  BulbOutlined,
+  PlayCircleOutlined
 } from '@vicons/antd'
 import { useCountdownStore } from '@/stores/countdown'
 import { readFileAsText } from '@/utils'
@@ -583,6 +648,7 @@ const styleOptions: SelectOption[] = [
 
 const wallpaperModeOptions: SelectOption[] = [
   { label: '静态壁纸', value: 'static' },
+  { label: '动态壁纸', value: 'animated' },
   { label: '交互壁纸', value: 'interactive' }
 ]
 
@@ -643,12 +709,31 @@ function toggleMini() {
   }
 }
 
-function handleWallpaperModeChange(mode: 'static' | 'interactive') {
+const intensityOptions: SelectOption[] = [
+  { label: '低（节能）', value: 'low' },
+  { label: '中（推荐）', value: 'medium' },
+  { label: '高（华丽）', value: 'high' }
+]
+
+const fpsOptions: SelectOption[] = [
+  { label: '15 FPS', value: 15 },
+  { label: '18 FPS', value: 18 },
+  { label: '20 FPS', value: 20 },
+  { label: '24 FPS', value: 24 },
+  { label: '30 FPS', value: 30 }
+]
+
+function handleWallpaperModeChange(mode: 'static' | 'interactive' | 'animated') {
   store.updateSettings({ wallpaperMode: mode })
   if (mode === 'interactive') {
+    window.electronAPI?.animatedWallpaperClose()
     window.electronAPI?.interactiveWallpaperShow()
+  } else if (mode === 'animated') {
+    window.electronAPI?.interactiveWallpaperClose()
+    window.electronAPI?.animatedWallpaperShow()
   } else {
     window.electronAPI?.interactiveWallpaperClose()
+    window.electronAPI?.animatedWallpaperClose()
   }
 }
 

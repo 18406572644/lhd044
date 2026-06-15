@@ -55,6 +55,13 @@ interface ElectronAPI {
   interactiveWallpaperUpdateData: (data: any) => Promise<boolean>
   interactiveWallpaperRequestData: () => Promise<boolean>
 
+  animatedWallpaperShow: () => Promise<boolean>
+  animatedWallpaperHide: () => Promise<boolean>
+  animatedWallpaperClose: () => Promise<boolean>
+  animatedWallpaperIsRunning: () => Promise<boolean>
+  animatedWallpaperUpdateData: (data: any) => Promise<boolean>
+  animatedWallpaperRequestData: () => Promise<boolean>
+
   onInteractiveAction: (callback: (action: string) => void) => () => void
   onWallpaperUpdateData: (callback: (data: any) => void) => () => void
   onWallpaperRequestData: (callback: () => void) => () => void

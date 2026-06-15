@@ -11,6 +11,7 @@ export function useWallpaper() {
   const lastWallpaperPath = ref<string>('')
   const currentMode = ref<WallpaperMode>('static')
   const isInteractiveRunning = ref(false)
+  const isAnimatedRunning = ref(false)
   let tickTimer: number | null = null
   let removeTick: (() => void) | null = null
   let removeRefresh: (() => void) | null = null
@@ -91,10 +92,16 @@ export function useWallpaper() {
     store.updateSettings({ wallpaperMode: mode })
 
     if (mode === 'interactive') {
+      await stopAnimatedWallpaper()
       await startInteractiveWallpaper()
+      stopTickTimer()
+    } else if (mode === 'animated') {
+      await stopInteractiveWallpaper()
+      await startAnimatedWallpaper()
       stopTickTimer()
     } else {
       await stopInteractiveWallpaper()
+      await stopAnimatedWallpaper()
       startTickTimer()
     }
   }
@@ -120,8 +127,29 @@ export function useWallpaper() {
     }
   }
 
+  async function startAnimatedWallpaper() {
+    if (!window.electronAPI) return
+    try {
+      await window.electronAPI.animatedWallpaperShow()
+      isAnimatedRunning.value = true
+      syncAnimatedData()
+    } catch (e) {
+      console.error('Failed to start animated wallpaper:', e)
+    }
+  }
+
+  async function stopAnimatedWallpaper() {
+    if (!window.electronAPI) return
+    try {
+      await window.electronAPI.animatedWallpaperClose()
+      isAnimatedRunning.value = false
+    } catch (e) {
+      console.error('Failed to stop animated wallpaper:', e)
+    }
+  }
+
   async function toggleInteractiveWallpaper() {
-    if (isInteractiveRunning.value) {
+    if (isInteractiveRunning.value || isAnimatedRunning.value) {
       await switchToMode('static')
     } else {
       await switchToMode('interactive')
@@ -147,6 +175,28 @@ export function useWallpaper() {
       })
       .catch(() => {
         setTimeout(syncInteractiveData, 500)
+      })
+  }
+
+  function syncAnimatedData() {
+    if (!window.electronAPI || !isAnimatedRunning.value) return
+    const countdown = store.activeCountdown
+    if (!countdown) return
+    const data = {
+      countdown,
+      allCountdowns: store.wallpaperCountdowns,
+      style: store.settings.currentWallpaperStyle,
+      animatedConfig: store.settings.animatedConfig
+    }
+    window.electronAPI.animatedWallpaperUpdateData(data)
+      .then((success: boolean) => {
+        if (!success) {
+          console.warn('Animated wallpaper window not ready, retrying...')
+          setTimeout(syncAnimatedData, 500)
+        }
+      })
+      .catch(() => {
+        setTimeout(syncAnimatedData, 500)
       })
   }
 
@@ -211,12 +261,16 @@ export function useWallpaper() {
     currentMode.value = store.settings.wallpaperMode
 
     if (window.electronAPI) {
-      const isRunning = await window.electronAPI.interactiveWallpaperIsRunning()
-      isInteractiveRunning.value = isRunning
+      const isInteractive = await window.electronAPI.interactiveWallpaperIsRunning()
+      isInteractiveRunning.value = isInteractive
+      const isAnimated = await window.electronAPI.animatedWallpaperIsRunning()
+      isAnimatedRunning.value = isAnimated
     }
 
     if (currentMode.value === 'interactive') {
       startInteractiveWallpaper()
+    } else if (currentMode.value === 'animated') {
+      startAnimatedWallpaper()
     } else {
       if (store.settings.autoUpdateWallpaper && window.electronAPI) {
         window.electronAPI.startWallpaperAutoUpdate(store.settings.wallpaperUpdateInterval)
@@ -237,7 +291,11 @@ export function useWallpaper() {
         handleInteractiveAction(action)
       })
       removeRequestData = window.electronAPI.onWallpaperRequestData(() => {
-        syncInteractiveData()
+        if (currentMode.value === 'animated') {
+          syncAnimatedData()
+        } else {
+          syncInteractiveData()
+        }
       })
     }
 
@@ -246,6 +304,8 @@ export function useWallpaper() {
     if (store.activeCountdown) {
       if (currentMode.value === 'static') {
         setTimeout(generateAndSetWallpaper, 500)
+      } else if (currentMode.value === 'animated') {
+        setTimeout(syncAnimatedData, 800)
       } else {
         setTimeout(syncInteractiveData, 800)
       }
@@ -288,6 +348,8 @@ export function useWallpaper() {
     () => {
       if (currentMode.value === 'static') {
         generateAndSetWallpaper()
+      } else if (currentMode.value === 'animated') {
+        syncAnimatedData()
       } else {
         syncInteractiveData()
       }
@@ -299,6 +361,8 @@ export function useWallpaper() {
     () => {
       if (currentMode.value === 'interactive') {
         syncInteractiveData()
+      } else if (currentMode.value === 'animated') {
+        syncAnimatedData()
       }
     }
   )
@@ -313,15 +377,27 @@ export function useWallpaper() {
     { deep: true }
   )
 
+  watch(
+    () => store.settings.animatedConfig,
+    () => {
+      if (currentMode.value === 'animated') {
+        syncAnimatedData()
+      }
+    },
+    { deep: true }
+  )
+
   return {
     canvas,
     isGenerating,
     lastWallpaperPath,
     currentMode,
     isInteractiveRunning,
+    isAnimatedRunning,
     generateAndSetWallpaper,
     switchToMode,
     toggleInteractiveWallpaper,
-    syncInteractiveData
+    syncInteractiveData,
+    syncAnimatedData
   }
 }

@@ -57,6 +57,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('wallpaper:interactive-update-data', data),
   interactiveWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:interactive-request-data'),
 
+  animatedWallpaperShow: () => ipcRenderer.invoke('wallpaper:animated-show'),
+  animatedWallpaperHide: () => ipcRenderer.invoke('wallpaper:animated-hide'),
+  animatedWallpaperClose: () => ipcRenderer.invoke('wallpaper:animated-close'),
+  animatedWallpaperIsRunning: () => ipcRenderer.invoke('wallpaper:animated-is-running'),
+  animatedWallpaperUpdateData: (data: any) =>
+    ipcRenderer.invoke('wallpaper:animated-update-data', data),
+  animatedWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:animated-request-data'),
+
   onInteractiveAction: (callback: (action: string) => void) => {
     const handler = (_e: any, action: string) => callback(action)
     ipcRenderer.on('wallpaper:interactive-action', handler)

@@ -48,7 +48,30 @@ export interface HistoryItem extends CountdownItem {
   completed: boolean
 }
 
-export type WallpaperMode = 'static' | 'interactive'
+export type WallpaperMode = 'static' | 'interactive' | 'animated'
+
+export type AnimationIntensity = 'low' | 'medium' | 'high'
+
+export interface AnimatedWallpaperConfig {
+  enabled: boolean
+  intensity: AnimationIntensity
+  numberFlip: boolean
+  breathingGlow: boolean
+  particleFlow: boolean
+  progressBar: boolean
+  fpsLimit: number
+}
+
+export interface AnimatedParticle {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  size: number
+  alpha: number
+  life: number
+  maxLife: number
+}
 
 export type InteractiveState = 'idle' | 'active' | 'expanded'
 
@@ -135,6 +158,7 @@ export interface AppSettings {
   displayHeight: number
   wallpaperMode: WallpaperMode
   interactiveConfig: InteractiveWallpaperConfig
+  animatedConfig: AnimatedWallpaperConfig
 }
 
 export interface CountdownDiff {

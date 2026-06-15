@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import dayjs from 'dayjs'
-import type { CountdownItem, AppSettings, HistoryItem, InteractiveWallpaperConfig } from '@/types'
+import type { CountdownItem, AppSettings, HistoryItem, InteractiveWallpaperConfig, AnimatedWallpaperConfig } from '@/types'
 import {
   generateId,
   createDefaultCountdown,
@@ -61,6 +61,18 @@ function getDefaultInteractiveConfig(): InteractiveWallpaperConfig {
   }
 }
 
+function getDefaultAnimatedConfig(): AnimatedWallpaperConfig {
+  return {
+    enabled: true,
+    intensity: 'medium',
+    numberFlip: true,
+    breathingGlow: true,
+    particleFlow: true,
+    progressBar: true,
+    fpsLimit: 18
+  }
+}
+
 export const useCountdownStore = defineStore('countdown', () => {
   const countdowns = ref<CountdownItem[]>([])
   const history = ref<HistoryItem[]>([])
@@ -78,7 +90,8 @@ export const useCountdownStore = defineStore('countdown', () => {
     displayWidth: 1920,
     displayHeight: 1080,
     wallpaperMode: 'static',
-    interactiveConfig: getDefaultInteractiveConfig()
+    interactiveConfig: getDefaultInteractiveConfig(),
+    animatedConfig: getDefaultAnimatedConfig()
   })
   const loaded = ref(false)
   const expiredNotified = ref<Set<string>>(new Set())
@@ -374,7 +387,8 @@ export const useCountdownStore = defineStore('countdown', () => {
       displayWidth: 1920,
       displayHeight: 1080,
       wallpaperMode: 'static',
-      interactiveConfig: getDefaultInteractiveConfig()
+      interactiveConfig: getDefaultInteractiveConfig(),
+      animatedConfig: getDefaultAnimatedConfig()
     }
     saveData()
   }

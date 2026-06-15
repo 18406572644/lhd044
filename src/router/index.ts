@@ -17,6 +17,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/InteractiveWallpaperView.vue')
   },
   {
+    path: '/animated-wallpaper',
+    name: 'AnimatedWallpaper',
+    component: () => import('@/views/AnimatedWallpaperView.vue')
+  },
+  {
     path: '/history',
     name: 'History',
     component: () => import('@/views/HistoryView.vue')

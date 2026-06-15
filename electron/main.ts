@@ -16,6 +16,7 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 let mainWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
 let interactiveWallpaperWindow: BrowserWindow | null = null
+let animatedWallpaperWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let wallpaperUpdateTimer: NodeJS.Timeout | null = null
 let isQuitting = false
@@ -192,6 +193,133 @@ function createInteractiveWallpaperWindow() {
   })
 }
 
+function setWallpaperWindowBehindDesktopIcons(win: BrowserWindow) {
+  if (process.platform !== 'win32') return
+
+  try {
+    const hWnd = win.getNativeWindowHandle()
+    const hwndNum = process.arch === 'x64' ? hWnd.readBigInt64LE(0).toString() : hWnd.readInt32LE(0).toString()
+    const scriptContent = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WallpaperWin32 {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string lpszClass, IntPtr lpszWindow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+}
+"@
+
+$progman = [WallpaperWin32]::FindWindow("Progman", $null)
+$result = [UIntPtr]::Zero
+[WallpaperWin32]::SendMessageTimeout($progman, 0x052C, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 1000, [ref]$result) | Out-Null
+
+$workerw = [IntPtr]::Zero
+do {
+    $workerw = [WallpaperWin32]::FindWindowEx([IntPtr]::Zero, $workerw, "WorkerW", [IntPtr]::Zero)
+    if (-not $workerw.Equals([IntPtr]::Zero)) {
+        $shellView = [WallpaperWin32]::FindWindowEx($workerw, [IntPtr]::Zero, "SHELLDLL_DefView", [IntPtr]::Zero)
+        if (-not $shellView.Equals([IntPtr]::Zero)) {
+            break
+        }
+    }
+} while (-not $workerw.Equals([IntPtr]::Zero))
+
+$handle = New-Object System.IntPtr(${hwndNum})
+[WallpaperWin32]::SetParent($handle, $workerw) | Out-Null
+`
+    const scriptPath = join(getAppDataPath(), 'set_wallpaper_layer.ps1')
+    writeFileSync(scriptPath, scriptContent, 'utf-8')
+    exec(
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+      { timeout: 10000 },
+      (error) => {
+        if (error) {
+          console.warn('Failed to set wallpaper window layer, falling back to always on bottom:', error.message)
+        }
+      }
+    )
+  } catch (e) {
+    console.warn('Failed to inject wallpaper window behind icons:', e)
+  }
+}
+
+function createAnimatedWallpaperWindow() {
+  if (animatedWallpaperWindow) {
+    animatedWallpaperWindow.show()
+    return
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width, height } = primaryDisplay.size
+  const { x, y } = primaryDisplay.bounds
+
+  animatedWallpaperWindow = new BrowserWindow({
+    title: 'Animated Wallpaper',
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: false,
+    alwaysOnTop: false,
+    skipTaskbar: true,
+    show: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    focusable: false,
+    webPreferences: {
+      preload,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+
+  animatedWallpaperWindow.setAlwaysOnTop(false)
+  animatedWallpaperWindow.setVisibleOnAllWorkspaces(true)
+  animatedWallpaperWindow.setIgnoreMouseEvents(true)
+  animatedWallpaperWindow.setFullScreenable(false)
+
+  animatedWallpaperWindow.on('closed', () => {
+    animatedWallpaperWindow = null
+  })
+
+  if (url) {
+    animatedWallpaperWindow.loadURL(url + '#/animated-wallpaper')
+  } else {
+    animatedWallpaperWindow.loadFile(indexHtml, { hash: '/animated-wallpaper' })
+  }
+
+  animatedWallpaperWindow.once('ready-to-show', () => {
+    animatedWallpaperWindow?.showInactive()
+    if (process.platform === 'win32') {
+      setTimeout(() => {
+        if (animatedWallpaperWindow) {
+          setWallpaperWindowBehindDesktopIcons(animatedWallpaperWindow)
+        }
+      }, 100)
+    }
+  })
+
+  animatedWallpaperWindow.webContents.on('did-finish-load', () => {
+    animatedWallpaperWindow?.webContents.send('wallpaper:window-ready')
+  })
+}
+
 function createTray() {
   const iconPath = join(process.env.VITE_PUBLIC || '', 'tray.png')
   let image = nativeImage.createEmpty()
@@ -245,10 +373,27 @@ function createTray() {
       checked: !!interactiveWallpaperWindow,
       click: (menuItem) => {
         if (menuItem.checked) {
+          animatedWallpaperWindow?.close()
+          animatedWallpaperWindow = null
           createInteractiveWallpaperWindow()
         } else {
           interactiveWallpaperWindow?.close()
           interactiveWallpaperWindow = null
+        }
+      }
+    },
+    {
+      label: '动态壁纸',
+      type: 'checkbox',
+      checked: !!animatedWallpaperWindow,
+      click: (menuItem) => {
+        if (menuItem.checked) {
+          interactiveWallpaperWindow?.close()
+          interactiveWallpaperWindow = null
+          createAnimatedWallpaperWindow()
+        } else {
+          animatedWallpaperWindow?.close()
+          animatedWallpaperWindow = null
         }
       }
     },
@@ -270,6 +415,7 @@ function createTray() {
         isQuitting = true
         miniWindow?.close()
         interactiveWallpaperWindow?.close()
+        animatedWallpaperWindow?.close()
         app.quit()
       }
     }
@@ -345,6 +491,7 @@ app.on('before-quit', () => {
   if (wallpaperUpdateTimer) {
     clearInterval(wallpaperUpdateTimer)
   }
+  animatedWallpaperWindow?.close()
 })
 
 ipcMain.handle('app:get-login-settings', () => {
@@ -456,6 +603,42 @@ ipcMain.on('wallpaper:window-ready', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('wallpaper:request-data')
   }
+})
+
+ipcMain.handle('wallpaper:animated-show', () => {
+  createAnimatedWallpaperWindow()
+  return true
+})
+
+ipcMain.handle('wallpaper:animated-hide', () => {
+  animatedWallpaperWindow?.hide()
+  return true
+})
+
+ipcMain.handle('wallpaper:animated-close', () => {
+  animatedWallpaperWindow?.close()
+  animatedWallpaperWindow = null
+  return true
+})
+
+ipcMain.handle('wallpaper:animated-is-running', () => {
+  return !!animatedWallpaperWindow
+})
+
+ipcMain.handle('wallpaper:animated-update-data', (_e, data: any) => {
+  if (animatedWallpaperWindow && !animatedWallpaperWindow.isDestroyed()) {
+    animatedWallpaperWindow.webContents.send('wallpaper:update-data', data)
+    return true
+  }
+  return false
+})
+
+ipcMain.handle('wallpaper:animated-request-data', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wallpaper:request-data')
+    return true
+  }
+  return false
 })
 
 ipcMain.handle('data:save', async (_e, data: any) => {
