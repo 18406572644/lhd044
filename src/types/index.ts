@@ -48,101 +48,6 @@ export interface HistoryItem extends CountdownItem {
   completed: boolean
 }
 
-export type WallpaperMode = 'static' | 'interactive' | 'animated'
-
-export type AnimationIntensity = 'low' | 'medium' | 'high'
-
-export interface AnimatedWallpaperConfig {
-  enabled: boolean
-  intensity: AnimationIntensity
-  numberFlip: boolean
-  breathingGlow: boolean
-  particleFlow: boolean
-  progressBar: boolean
-  fpsLimit: number
-}
-
-export interface AnimatedParticle {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  size: number
-  alpha: number
-  life: number
-  maxLife: number
-}
-
-export type InteractiveState = 'idle' | 'active' | 'expanded'
-
-export type HotZonePosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
-
-export interface HotZone {
-  id: string
-  position: HotZonePosition
-  size: number
-  action: 'new-countdown' | 'toggle-mode' | 'next-countdown' | 'show-main'
-  label: string
-  icon: string
-}
-
-export interface ParticleConfig {
-  count: number
-  minSize: number
-  maxSize: number
-  speed: number
-  color: string
-  opacity: number
-  trailLength: number
-}
-
-export interface GlowConfig {
-  enabled: boolean
-  radius: number
-  color: string
-  opacity: number
-  pulseSpeed: number
-}
-
-export interface MouseFollowConfig {
-  enabled: boolean
-  influence: number
-  smoothing: number
-  particleAttraction: number
-  glowFollow: boolean
-}
-
-export interface IdleDetectionConfig {
-  enabled: boolean
-  timeoutMs: number
-  expandedInfoTypes: ('schedule' | 'weather' | 'quote')[]
-}
-
-export interface InteractiveWallpaperConfig {
-  particles: ParticleConfig
-  glow: GlowConfig
-  mouseFollow: MouseFollowConfig
-  idleDetection: IdleDetectionConfig
-  hotZones: HotZone[]
-  clickThrough: boolean
-  showCountdownClickHint: boolean
-  doubleClickOpenMain: boolean
-}
-
-export type InteractiveAction =
-  | { type: 'switch-countdown'; direction: 'next' | 'prev' }
-  | { type: 'open-main-window' }
-  | { type: 'new-countdown' }
-  | { type: 'toggle-mode' }
-  | { type: 'hot-zone'; zone: HotZone }
-
-export type WallpaperStyle =
-  | 'gradient'
-  | 'blur'
-  | 'minimal'
-  | 'glass'
-  | 'elegant'
-
 export interface AppSettings {
   activeCountdownId: string | null
   autoUpdateWallpaper: boolean
@@ -161,6 +66,13 @@ export interface AppSettings {
   animatedConfig: AnimatedWallpaperConfig
 }
 
+export type WallpaperStyle =
+  | 'gradient'
+  | 'blur'
+  | 'minimal'
+  | 'glass'
+  | 'elegant'
+
 export interface CountdownDiff {
   days: number
   hours: number
@@ -169,3 +81,78 @@ export interface CountdownDiff {
   totalMs: number
   isPast: boolean
 }
+
+export type AnimationIntensity = 'low' | 'medium' | 'high'
+
+export interface AnimatedParticle {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  size: number
+  alpha: number
+  life: number
+  maxLife: number
+}
+
+export interface AnimatedWallpaperConfig {
+  particleFlow: boolean
+  breathingGlow: boolean
+  numberFlip: boolean
+  progressBar: boolean
+  intensity: AnimationIntensity
+  fpsLimit: number
+}
+
+export type WallpaperMode = 'static' | 'interactive'
+
+export interface InteractiveWallpaperConfig {
+  mouseFollowParticles: boolean
+  clickThrough: boolean
+  hotCornerEnabled: boolean
+  idleExpandEnabled: boolean
+  idleExpandDelayMs: number
+  interactiveParticles: InteractiveParticleConfig
+  mouseTrail: MouseTrailConfig
+}
+
+export interface InteractiveParticleConfig {
+  enabled: boolean
+  count: number
+  followStrength: number
+  maxSpeed: number
+}
+
+export interface MouseTrailConfig {
+  enabled: boolean
+  length: number
+  fadeSpeed: number
+}
+
+export interface MousePosition {
+  x: number
+  y: number
+}
+
+export type HotCornerArea = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'none'
+
+export interface ExpandedInfoPanel {
+  schedule: ScheduleItem[]
+  weather: WeatherInfo | null
+  nextCountdowns: CountdownItem[]
+}
+
+export interface ScheduleItem {
+  id: string
+  title: string
+  time: string
+  color: string
+}
+
+export interface WeatherInfo {
+  temperature: number
+  condition: string
+  icon: string
+  city: string
+}
+

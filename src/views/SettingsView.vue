@@ -22,25 +22,11 @@
         <div class="setting-list">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">壁纸模式</div>
-              <div class="setting-desc">静态模式生成图片设为壁纸；交互模式创建全屏窗口实时渲染</div>
-            </div>
-            <n-select
-              v-model:value="store.settings.wallpaperMode"
-              :options="wallpaperModeOptions"
-              style="width: 160px"
-              @update:value="handleWallpaperModeChange"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
               <div class="setting-label">自动更新壁纸</div>
               <div class="setting-desc">倒计时变化时自动刷新桌面壁纸</div>
             </div>
             <n-switch
               v-model:value="store.settings.autoUpdateWallpaper"
-              :disabled="store.settings.wallpaperMode === 'interactive' || store.settings.wallpaperMode === 'animated'"
               @update:value="handleAutoUpdateChange"
             />
           </div>
@@ -103,184 +89,6 @@
             <div class="setting-value">
               {{ store.settings.displayWidth }} × {{ store.settings.displayHeight }}
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="setting-card" v-if="store.settings.wallpaperMode === 'interactive'">
-        <h3 class="card-title">
-          <n-icon><BulbOutlined /></n-icon>
-          交互壁纸设置
-        </h3>
-        <div class="setting-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">粒子数量</div>
-              <div class="setting-desc">壁纸上浮动的粒子数量，影响视觉效果</div>
-            </div>
-            <n-input-number
-              v-model:value="store.settings.interactiveConfig.particles.count"
-              :min="10"
-              :max="200"
-              style="width: 120px"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">粒子速度</div>
-              <div class="setting-desc">粒子移动的速度</div>
-            </div>
-            <n-input-number
-              v-model:value="store.settings.interactiveConfig.particles.speed"
-              :min="0.1"
-              :max="3"
-              :step="0.1"
-              style="width: 120px"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">鼠标追随效果</div>
-              <div class="setting-desc">粒子和光晕跟随鼠标产生流动效果</div>
-            </div>
-            <n-switch v-model:value="store.settings.interactiveConfig.mouseFollow.enabled" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">追随影响范围</div>
-              <div class="setting-desc">鼠标对粒子的吸引力范围（像素）</div>
-            </div>
-            <n-input-number
-              v-model:value="store.settings.interactiveConfig.mouseFollow.influence"
-              :min="50"
-              :max="400"
-              :step="10"
-              style="width: 120px"
-              :disabled="!store.settings.interactiveConfig.mouseFollow.enabled"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">光晕效果</div>
-              <div class="setting-desc">鼠标周围显示柔和的光晕</div>
-            </div>
-            <n-switch v-model:value="store.settings.interactiveConfig.glow.enabled" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">光晕颜色</div>
-              <div class="setting-desc">光晕的显示颜色</div>
-            </div>
-            <input
-              type="color"
-              v-model="store.settings.interactiveConfig.glow.color"
-              class="color-input"
-              :disabled="!store.settings.interactiveConfig.glow.enabled"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">点击穿透</div>
-              <div class="setting-desc">开启后交互壁纸窗口不接收鼠标事件，可操作桌面</div>
-            </div>
-            <n-switch
-              v-model:value="store.settings.interactiveConfig.clickThrough"
-              @update:value="handleClickThroughChange"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">双击打开主窗口</div>
-              <div class="setting-desc">在壁纸区域双击可打开主窗口</div>
-            </div>
-            <n-switch v-model:value="store.settings.interactiveConfig.doubleClickOpenMain" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">闲置自动展开</div>
-              <div class="setting-desc">5秒未操作时自动展开更多信息</div>
-            </div>
-            <n-switch v-model:value="store.settings.interactiveConfig.idleDetection.enabled" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">右下角快捷热区</div>
-              <div class="setting-desc">壁纸右下角显示可点击的快捷操作区域</div>
-            </div>
-            <n-switch :value="store.settings.interactiveConfig.hotZones.length > 0" @update:value="handleHotZoneToggle" />
-          </div>
-        </div>
-      </section>
-
-      <section class="setting-card" v-if="store.settings.wallpaperMode === 'animated'">
-        <h3 class="card-title">
-          <n-icon><PlayCircleOutlined /></n-icon>
-          动态壁纸设置
-        </h3>
-        <div class="setting-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">动画强度</div>
-              <div class="setting-desc">调节动画效果的整体强度，影响粒子数量和速度</div>
-            </div>
-            <n-select
-              v-model:value="store.settings.animatedConfig.intensity"
-              :options="intensityOptions"
-              style="width: 160px"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">帧率限制</div>
-              <div class="setting-desc">动态壁纸的渲染帧率，越高越流畅但越占用资源</div>
-            </div>
-            <n-select
-              v-model:value="store.settings.animatedConfig.fpsLimit"
-              :options="fpsOptions"
-              style="width: 140px"
-            />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">数字翻转动画</div>
-              <div class="setting-desc">倒计时数字变化时带有平滑的翻牌/滚动效果</div>
-            </div>
-            <n-switch v-model:value="store.settings.animatedConfig.numberFlip" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">呼吸光效</div>
-              <div class="setting-desc">根据剩余时间紧迫程度，壁纸边缘呈现不同频率的呼吸光效</div>
-            </div>
-            <n-switch v-model:value="store.settings.animatedConfig.breathingGlow" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">粒子流动</div>
-              <div class="setting-desc">背景有缓慢流动的粒子效果，粒子密度随倒计时主题变化</div>
-            </div>
-            <n-switch v-model:value="store.settings.animatedConfig.particleFlow" />
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">时间进度条</div>
-              <div class="setting-desc">壁纸底部显示一条细微的进度条，从创建日期到目标日期</div>
-            </div>
-            <n-switch v-model:value="store.settings.animatedConfig.progressBar" />
           </div>
         </div>
       </section>
@@ -609,9 +417,7 @@ import {
   FolderOpenOutlined,
   DeleteOutlined,
   FileOutlined,
-  WarningOutlined,
-  BulbOutlined,
-  PlayCircleOutlined
+  WarningOutlined
 } from '@vicons/antd'
 import { useCountdownStore } from '@/stores/countdown'
 import { readFileAsText } from '@/utils'
@@ -644,12 +450,6 @@ const styleOptions: SelectOption[] = [
   { label: '极简风格', value: 'minimal' },
   { label: '玻璃风格', value: 'glass' },
   { label: '雅致风格', value: 'elegant' }
-]
-
-const wallpaperModeOptions: SelectOption[] = [
-  { label: '静态壁纸', value: 'static' },
-  { label: '动态壁纸', value: 'animated' },
-  { label: '交互壁纸', value: 'interactive' }
 ]
 
 const intervalOptions: SelectOption[] = [
@@ -707,58 +507,6 @@ function toggleMini() {
   if (window.electronAPI) {
     window.electronAPI.miniWindowShow()
   }
-}
-
-const intensityOptions: SelectOption[] = [
-  { label: '低（节能）', value: 'low' },
-  { label: '中（推荐）', value: 'medium' },
-  { label: '高（华丽）', value: 'high' }
-]
-
-const fpsOptions: SelectOption[] = [
-  { label: '15 FPS', value: 15 },
-  { label: '18 FPS', value: 18 },
-  { label: '20 FPS', value: 20 },
-  { label: '24 FPS', value: 24 },
-  { label: '30 FPS', value: 30 }
-]
-
-function handleWallpaperModeChange(mode: 'static' | 'interactive' | 'animated') {
-  store.updateSettings({ wallpaperMode: mode })
-  if (mode === 'interactive') {
-    window.electronAPI?.animatedWallpaperClose()
-    window.electronAPI?.interactiveWallpaperShow()
-  } else if (mode === 'animated') {
-    window.electronAPI?.interactiveWallpaperClose()
-    window.electronAPI?.animatedWallpaperShow()
-  } else {
-    window.electronAPI?.interactiveWallpaperClose()
-    window.electronAPI?.animatedWallpaperClose()
-  }
-}
-
-async function handleClickThroughChange(clickThrough: boolean) {
-  if (window.electronAPI) {
-    await window.electronAPI.interactiveWallpaperSetClickThrough(clickThrough)
-  }
-}
-
-function handleHotZoneToggle(enabled: boolean) {
-  if (enabled) {
-    store.settings.interactiveConfig.hotZones = [
-      {
-        id: 'hz-new',
-        position: 'bottom-right',
-        size: 80,
-        action: 'new-countdown',
-        label: '新建倒计时',
-        icon: '➕'
-      }
-    ]
-  } else {
-    store.settings.interactiveConfig.hotZones = []
-  }
-  store.saveData()
 }
 
 function goBack() {
@@ -1152,21 +900,6 @@ watch(
   color: $color-text-muted;
   line-height: 1.6;
   margin-top: 8px;
-}
-
-.color-input {
-  width: 40px;
-  height: 32px;
-  border: 2px solid $color-border;
-  border-radius: $radius-sm;
-  padding: 2px;
-  cursor: pointer;
-  background: transparent;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 }
 
 @media (max-width: 900px) {

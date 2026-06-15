@@ -44,32 +44,27 @@ interface ElectronAPI {
 
   openExternal: (url: string) => void
 
-  onDataUpdated: (callback: () => void) => () => void
-
-  interactiveWallpaperShow: () => Promise<boolean>
-  interactiveWallpaperHide: () => Promise<boolean>
-  interactiveWallpaperClose: () => Promise<boolean>
-  interactiveWallpaperSetClickThrough: (clickThrough: boolean) => Promise<boolean>
-  interactiveWallpaperSendAction: (action: string) => Promise<boolean>
-  interactiveWallpaperIsRunning: () => Promise<boolean>
-  interactiveWallpaperUpdateData: (data: any) => Promise<boolean>
-  interactiveWallpaperRequestData: () => Promise<boolean>
-
-  animatedWallpaperShow: () => Promise<boolean>
-  animatedWallpaperHide: () => Promise<boolean>
-  animatedWallpaperClose: () => Promise<boolean>
-  animatedWallpaperIsRunning: () => Promise<boolean>
-  animatedWallpaperUpdateData: (data: any) => Promise<boolean>
-  animatedWallpaperRequestData: () => Promise<boolean>
-
-  onInteractiveAction: (callback: (action: string) => void) => () => void
-  onWallpaperUpdateData: (callback: (data: any) => void) => () => void
-  onWallpaperRequestData: (callback: () => void) => () => void
-  onWallpaperWindowReady: (callback: () => void) => () => void
-
   selectImageFile: () => Promise<string | null>
   saveBackupFile: (content: string, filename: string) => Promise<boolean>
   openBackupFile: () => Promise<string | null>
+
+  setWallpaperMode: (mode: 'static' | 'interactive') => Promise<boolean>
+  wallpaperWindowExists: () => Promise<boolean>
+  setWallpaperClickThrough: (clickThrough: boolean) => Promise<boolean>
+
+  animatedWallpaperRequestData: () => Promise<any>
+  broadcastWallpaperData: (data: any) => void
+
+  onWallpaperUpdateData: (callback: (data: any) => void) => () => void
+
+  cycleCountdown: () => void
+  newCountdown: () => void
+  showMainWindow: () => void
+
+  onCycleCountdown: (callback: () => void) => () => void
+  onNewCountdown: (callback: () => void) => () => void
+
+  onDataUpdated?: (callback: (data: any) => void) => () => void
 }
 
 interface Window {

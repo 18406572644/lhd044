@@ -12,16 +12,6 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/MiniView.vue')
   },
   {
-    path: '/interactive-wallpaper',
-    name: 'InteractiveWallpaper',
-    component: () => import('@/views/InteractiveWallpaperView.vue')
-  },
-  {
-    path: '/animated-wallpaper',
-    name: 'AnimatedWallpaper',
-    component: () => import('@/views/AnimatedWallpaperView.vue')
-  },
-  {
     path: '/history',
     name: 'History',
     component: () => import('@/views/HistoryView.vue')
@@ -30,6 +20,16 @@ const routes: RouteRecordRaw[] = [
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/SettingsView.vue')
+  },
+  {
+    path: '/animated-wallpaper',
+    name: 'AnimatedWallpaper',
+    component: () => import('@/views/AnimatedWallpaperView.vue')
+  },
+  {
+    path: '/interactive-wallpaper',
+    name: 'InteractiveWallpaper',
+    component: () => import('@/views/InteractiveWallpaperView.vue')
   }
 ]
 

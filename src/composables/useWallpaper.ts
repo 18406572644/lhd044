@@ -1,7 +1,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useCountdownStore } from '@/stores/countdown'
 import { renderWallpaperAsync } from '@/utils/wallpaperRenderer'
-import type { WallpaperMode, InteractiveAction } from '@/types'
+import type { WallpaperMode } from '@/types'
 import dayjs from 'dayjs'
 
 export function useWallpaper() {
@@ -10,14 +10,88 @@ export function useWallpaper() {
   const isGenerating = ref(false)
   const lastWallpaperPath = ref<string>('')
   const currentMode = ref<WallpaperMode>('static')
-  const isInteractiveRunning = ref(false)
-  const isAnimatedRunning = ref(false)
   let tickTimer: number | null = null
   let removeTick: (() => void) | null = null
   let removeRefresh: (() => void) | null = null
-  let removeInteractiveAction: (() => void) | null = null
-  let removeRequestData: (() => void) | null = null
+  let removeCycleCountdown: (() => void) | null = null
+  let removeNewCountdown: (() => void) | null = null
   let rotateTimer: number | null = null
+  let dataBroadcastTimer: number | null = null
+  let showNewCountdownForm: (() => void) | null = null
+
+  function registerNewCountdownFormHandler(handler: () => void) {
+    showNewCountdownForm = handler
+  }
+
+  function broadcastWallpaperData() {
+    if (!window.electronAPI) return
+    const countdown = store.activeCountdown
+    if (!countdown) return
+
+    window.electronAPI.broadcastWallpaperData({
+      countdown,
+      style: store.settings.currentWallpaperStyle,
+      allCountdowns: store.wallpaperCountdowns,
+      animatedConfig: store.settings.animatedConfig,
+      interactiveConfig: store.settings.interactiveConfig
+    })
+  }
+
+  async function switchWallpaperMode(mode: WallpaperMode): Promise<boolean> {
+    if (!window.electronAPI) return false
+    try {
+      const success = await window.electronAPI.setWallpaperMode(mode)
+      if (success) {
+        currentMode.value = mode
+        store.updateSettings({ wallpaperMode: mode })
+
+        if (mode === 'interactive') {
+          broadcastWallpaperData()
+          startDataBroadcastTimer()
+          await window.electronAPI.setWallpaperClickThrough(
+            store.settings.interactiveConfig.clickThrough
+          )
+        } else {
+          stopDataBroadcastTimer()
+          if (!store.settings.autoUpdateWallpaper) {
+            await generateAndSetWallpaper()
+          }
+        }
+      }
+      return success
+    } catch (e) {
+      console.error('Failed to switch wallpaper mode:', e)
+      return false
+    }
+  }
+
+  function cycleActiveCountdown() {
+    const list = store.wallpaperCountdowns
+    if (list.length <= 1) return
+
+    const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
+    const nextIndex = (currentIndex + 1) % list.length
+    store.setActiveCountdown(list[nextIndex].id)
+
+    if (currentMode.value === 'interactive') {
+      broadcastWallpaperData()
+    }
+  }
+
+  function startDataBroadcastTimer() {
+    stopDataBroadcastTimer()
+    if (!window.electronAPI) return
+    dataBroadcastTimer = window.setInterval(() => {
+      broadcastWallpaperData()
+    }, 1000)
+  }
+
+  function stopDataBroadcastTimer() {
+    if (dataBroadcastTimer !== null) {
+      clearInterval(dataBroadcastTimer)
+      dataBroadcastTimer = null
+    }
+  }
 
   async function generateAndSetWallpaper() {
     if (!canvas.value) return
@@ -54,7 +128,7 @@ export function useWallpaper() {
     stopTickTimer()
     tickTimer = window.setInterval(() => {
       store.checkExpiredCountdowns()
-      if (store.settings.autoUpdateWallpaper) {
+      if (store.settings.autoUpdateWallpaper && currentMode.value === 'static') {
         generateAndSetWallpaper()
       }
     }, store.settings.wallpaperUpdateInterval)
@@ -75,7 +149,11 @@ export function useWallpaper() {
         const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
         const nextIndex = (currentIndex + 1) % list.length
         store.setActiveCountdown(list[nextIndex].id)
-        generateAndSetWallpaper()
+        if (currentMode.value === 'interactive') {
+          broadcastWallpaperData()
+        } else if (store.settings.autoUpdateWallpaper) {
+          generateAndSetWallpaper()
+        }
       }, store.settings.rotateIntervalMinutes * 60 * 1000)
     }
   }
@@ -87,238 +165,78 @@ export function useWallpaper() {
     }
   }
 
-  async function switchToMode(mode: WallpaperMode) {
-    currentMode.value = mode
-    store.updateSettings({ wallpaperMode: mode })
-
-    if (mode === 'interactive') {
-      await stopAnimatedWallpaper()
-      await startInteractiveWallpaper()
-      stopTickTimer()
-    } else if (mode === 'animated') {
-      await stopInteractiveWallpaper()
-      await startAnimatedWallpaper()
-      stopTickTimer()
-    } else {
-      await stopInteractiveWallpaper()
-      await stopAnimatedWallpaper()
-      startTickTimer()
-    }
-  }
-
-  async function startInteractiveWallpaper() {
+  async function syncInteractiveModeState() {
     if (!window.electronAPI) return
     try {
-      await window.electronAPI.interactiveWallpaperShow()
-      isInteractiveRunning.value = true
-      syncInteractiveData()
-    } catch (e) {
-      console.error('Failed to start interactive wallpaper:', e)
-    }
-  }
-
-  async function stopInteractiveWallpaper() {
-    if (!window.electronAPI) return
-    try {
-      await window.electronAPI.interactiveWallpaperClose()
-      isInteractiveRunning.value = false
-    } catch (e) {
-      console.error('Failed to stop interactive wallpaper:', e)
-    }
-  }
-
-  async function startAnimatedWallpaper() {
-    if (!window.electronAPI) return
-    try {
-      await window.electronAPI.animatedWallpaperShow()
-      isAnimatedRunning.value = true
-      syncAnimatedData()
-    } catch (e) {
-      console.error('Failed to start animated wallpaper:', e)
-    }
-  }
-
-  async function stopAnimatedWallpaper() {
-    if (!window.electronAPI) return
-    try {
-      await window.electronAPI.animatedWallpaperClose()
-      isAnimatedRunning.value = false
-    } catch (e) {
-      console.error('Failed to stop animated wallpaper:', e)
-    }
-  }
-
-  async function toggleInteractiveWallpaper() {
-    if (isInteractiveRunning.value || isAnimatedRunning.value) {
-      await switchToMode('static')
-    } else {
-      await switchToMode('interactive')
-    }
-  }
-
-  function syncInteractiveData() {
-    if (!window.electronAPI || !isInteractiveRunning.value) return
-    const countdown = store.activeCountdown
-    if (!countdown) return
-    const data = {
-      countdown,
-      allCountdowns: store.wallpaperCountdowns,
-      style: store.settings.currentWallpaperStyle,
-      interactiveConfig: store.settings.interactiveConfig
-    }
-    window.electronAPI.interactiveWallpaperUpdateData(data)
-      .then((success) => {
-        if (!success) {
-          console.warn('Interactive wallpaper window not ready, retrying...')
-          setTimeout(syncInteractiveData, 500)
-        }
-      })
-      .catch(() => {
-        setTimeout(syncInteractiveData, 500)
-      })
-  }
-
-  function syncAnimatedData() {
-    if (!window.electronAPI || !isAnimatedRunning.value) return
-    const countdown = store.activeCountdown
-    if (!countdown) return
-    const data = {
-      countdown,
-      allCountdowns: store.wallpaperCountdowns,
-      style: store.settings.currentWallpaperStyle,
-      animatedConfig: store.settings.animatedConfig
-    }
-    window.electronAPI.animatedWallpaperUpdateData(data)
-      .then((success: boolean) => {
-        if (!success) {
-          console.warn('Animated wallpaper window not ready, retrying...')
-          setTimeout(syncAnimatedData, 500)
-        }
-      })
-      .catch(() => {
-        setTimeout(syncAnimatedData, 500)
-      })
-  }
-
-  function handleInteractiveAction(action: string) {
-    try {
-      const parsed = JSON.parse(action) as InteractiveAction
-      switch (parsed.type) {
-        case 'switch-countdown': {
-          const list = store.wallpaperCountdowns
-          if (list.length <= 1) break
-          const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
-          if (parsed.direction === 'next') {
-            const nextIndex = (currentIndex + 1) % list.length
-            store.setActiveCountdown(list[nextIndex].id)
-          } else {
-            const prevIndex = (currentIndex - 1 + list.length) % list.length
-            store.setActiveCountdown(list[prevIndex].id)
-          }
-          syncInteractiveData()
-          break
-        }
-        case 'open-main-window': {
-          window.electronAPI?.mainWindowShow()
-          break
-        }
-        case 'new-countdown': {
-          window.electronAPI?.mainWindowShow()
-          break
-        }
-        case 'toggle-mode': {
-          switchToMode('static')
-          break
-        }
-        case 'hot-zone': {
-          const zone = parsed.zone
-          if (zone.action === 'new-countdown') {
-            window.electronAPI?.mainWindowShow()
-          } else if (zone.action === 'toggle-mode') {
-            switchToMode('static')
-          } else if (zone.action === 'next-countdown') {
-            const list = store.wallpaperCountdowns
-            if (list.length > 1) {
-              const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
-              const nextIndex = (currentIndex + 1) % list.length
-              store.setActiveCountdown(list[nextIndex].id)
-              syncInteractiveData()
-            }
-          } else if (zone.action === 'show-main') {
-            window.electronAPI?.mainWindowShow()
-          }
-          break
-        }
+      const exists = await window.electronAPI.wallpaperWindowExists()
+      currentMode.value = exists ? 'interactive' : store.settings.wallpaperMode || 'static'
+      if (exists) {
+        startDataBroadcastTimer()
+        broadcastWallpaperData()
+        await window.electronAPI.setWallpaperClickThrough(
+          store.settings.interactiveConfig.clickThrough
+        )
       }
-    } catch {
-      console.warn('Failed to handle interactive action:', action)
+    } catch (e) {
+      console.error('Failed to sync interactive mode state:', e)
     }
   }
 
   onMounted(async () => {
     await store.loadData()
+    await syncInteractiveModeState()
 
-    currentMode.value = store.settings.wallpaperMode
-
-    if (window.electronAPI) {
-      const isInteractive = await window.electronAPI.interactiveWallpaperIsRunning()
-      isInteractiveRunning.value = isInteractive
-      const isAnimated = await window.electronAPI.animatedWallpaperIsRunning()
-      isAnimatedRunning.value = isAnimated
+    if (store.settings.wallpaperMode === 'interactive' && currentMode.value !== 'interactive') {
+      await switchWallpaperMode('interactive')
     }
 
-    if (currentMode.value === 'interactive') {
-      startInteractiveWallpaper()
-    } else if (currentMode.value === 'animated') {
-      startAnimatedWallpaper()
-    } else {
-      if (store.settings.autoUpdateWallpaper && window.electronAPI) {
-        window.electronAPI.startWallpaperAutoUpdate(store.settings.wallpaperUpdateInterval)
-        removeTick = window.electronAPI.onWallpaperTick(() => {
-          store.checkExpiredCountdowns()
+    if (store.settings.autoUpdateWallpaper && window.electronAPI) {
+      window.electronAPI.startWallpaperAutoUpdate(store.settings.wallpaperUpdateInterval)
+      removeTick = window.electronAPI.onWallpaperTick(() => {
+        store.checkExpiredCountdowns()
+        if (currentMode.value === 'static') {
           generateAndSetWallpaper()
-        })
-        removeRefresh = window.electronAPI.onWallpaperRefresh(() => {
-          generateAndSetWallpaper()
-        })
-      } else {
-        startTickTimer()
-      }
-    }
-
-    if (window.electronAPI) {
-      removeInteractiveAction = window.electronAPI.onInteractiveAction((action) => {
-        handleInteractiveAction(action)
-      })
-      removeRequestData = window.electronAPI.onWallpaperRequestData(() => {
-        if (currentMode.value === 'animated') {
-          syncAnimatedData()
         } else {
-          syncInteractiveData()
+          broadcastWallpaperData()
+        }
+      })
+      removeRefresh = window.electronAPI.onWallpaperRefresh(() => {
+        if (currentMode.value === 'static') {
+          generateAndSetWallpaper()
+        } else {
+          broadcastWallpaperData()
+        }
+      })
+    } else {
+      startTickTimer()
+    }
+
+    if (window.electronAPI) {
+      removeCycleCountdown = window.electronAPI.onCycleCountdown(() => {
+        cycleActiveCountdown()
+      })
+      removeNewCountdown = window.electronAPI.onNewCountdown(() => {
+        if (showNewCountdownForm) {
+          showNewCountdownForm()
         }
       })
     }
 
     startRotateTimer()
 
-    if (store.activeCountdown) {
-      if (currentMode.value === 'static') {
-        setTimeout(generateAndSetWallpaper, 500)
-      } else if (currentMode.value === 'animated') {
-        setTimeout(syncAnimatedData, 800)
-      } else {
-        setTimeout(syncInteractiveData, 800)
-      }
+    if (store.activeCountdown && currentMode.value === 'static') {
+      setTimeout(generateAndSetWallpaper, 500)
     }
   })
 
   onUnmounted(() => {
     stopTickTimer()
     stopRotateTimer()
+    stopDataBroadcastTimer()
     if (removeTick) removeTick()
     if (removeRefresh) removeRefresh()
-    if (removeInteractiveAction) removeInteractiveAction()
-    if (removeRequestData) removeRequestData()
+    if (removeCycleCountdown) removeCycleCountdown()
+    if (removeNewCountdown) removeNewCountdown()
     if (window.electronAPI) {
       window.electronAPI.stopWallpaperAutoUpdate()
     }
@@ -327,7 +245,7 @@ export function useWallpaper() {
   watch(
     () => store.settings.wallpaperUpdateInterval,
     () => {
-      if (!window.electronAPI && currentMode.value === 'static') {
+      if (!window.electronAPI) {
         startTickTimer()
       }
     }
@@ -346,42 +264,38 @@ export function useWallpaper() {
   watch(
     () => store.settings.activeCountdownId,
     () => {
-      if (currentMode.value === 'static') {
+      if (currentMode.value === 'interactive') {
+        broadcastWallpaperData()
+      } else if (store.settings.autoUpdateWallpaper) {
         generateAndSetWallpaper()
-      } else if (currentMode.value === 'animated') {
-        syncAnimatedData()
-      } else {
-        syncInteractiveData()
       }
     }
   )
 
   watch(
-    () => store.settings.currentWallpaperStyle,
-    () => {
-      if (currentMode.value === 'interactive') {
-        syncInteractiveData()
-      } else if (currentMode.value === 'animated') {
-        syncAnimatedData()
+    () => store.settings.interactiveConfig.clickThrough,
+    async (val) => {
+      if (window.electronAPI && currentMode.value === 'interactive') {
+        await window.electronAPI.setWallpaperClickThrough(val)
       }
     }
   )
 
   watch(
-    () => store.settings.interactiveConfig,
+    () => [store.settings.currentWallpaperStyle, store.settings.animatedConfig, store.settings.interactiveConfig],
     () => {
       if (currentMode.value === 'interactive') {
-        syncInteractiveData()
+        broadcastWallpaperData()
       }
     },
     { deep: true }
   )
 
   watch(
-    () => store.settings.animatedConfig,
+    () => store.wallpaperCountdowns,
     () => {
-      if (currentMode.value === 'animated') {
-        syncAnimatedData()
+      if (currentMode.value === 'interactive') {
+        broadcastWallpaperData()
       }
     },
     { deep: true }
@@ -392,12 +306,10 @@ export function useWallpaper() {
     isGenerating,
     lastWallpaperPath,
     currentMode,
-    isInteractiveRunning,
-    isAnimatedRunning,
     generateAndSetWallpaper,
-    switchToMode,
-    toggleInteractiveWallpaper,
-    syncInteractiveData,
-    syncAnimatedData
+    switchWallpaperMode,
+    cycleActiveCountdown,
+    broadcastWallpaperData,
+    registerNewCountdownFormHandler
   }
 }

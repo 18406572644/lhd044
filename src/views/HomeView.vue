@@ -46,22 +46,19 @@
           <h2>壁纸预览</h2>
           <n-space>
             <n-select
+              v-model:value="currentMode"
+              :options="modeOptions"
+              size="small"
+              style="width: 150px"
+              @update:value="handleModeChange"
+            />
+            <n-select
               v-model:value="store.settings.currentWallpaperStyle"
               :options="styleOptions"
               size="small"
               style="width: 140px"
               @update:value="generateAndSetWallpaper"
             />
-            <n-button
-              size="small"
-              :type="currentMode === 'interactive' ? 'warning' : 'default'"
-              @click="toggleInteractiveWallpaper"
-            >
-              <template #icon>
-                <n-icon><BulbOutlined /></n-icon>
-              </template>
-              {{ isInteractiveRunning ? '交互模式' : '静态模式' }}
-            </n-button>
             <n-button
               size="small"
               :loading="isGenerating"
@@ -130,8 +127,7 @@ import {
   SettingOutlined,
   HistoryOutlined,
   AppstoreOutlined,
-  SyncOutlined,
-  BulbOutlined
+  SyncOutlined
 } from '@vicons/antd'
 import CountdownCard from '@/components/CountdownCard.vue'
 import CountdownForm from '@/components/CountdownForm.vue'
@@ -145,11 +141,23 @@ const message = useMessage()
 const dialog = useDialog()
 const store = useCountdownStore()
 
-const { canvas: wallpaperCanvas, isGenerating, generateAndSetWallpaper, currentMode, toggleInteractiveWallpaper, isInteractiveRunning } = useWallpaper()
+const {
+  canvas: wallpaperCanvas,
+  isGenerating,
+  generateAndSetWallpaper,
+  currentMode,
+  switchWallpaperMode,
+  registerNewCountdownFormHandler
+} = useWallpaper()
 
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const showForm = ref(false)
 const editingItem = ref<CountdownItem | null>(null)
+
+registerNewCountdownFormHandler(() => {
+  editingItem.value = null
+  showForm.value = true
+})
 
 const styleOptions: SelectOption[] = [
   { label: '渐变', value: 'gradient' },
@@ -158,6 +166,24 @@ const styleOptions: SelectOption[] = [
   { label: '玻璃', value: 'glass' },
   { label: '雅致', value: 'elegant' }
 ]
+
+const modeOptions: SelectOption[] = [
+  { label: '🖼️ 静态壁纸', value: 'static' },
+  { label: '✨ 交互壁纸', value: 'interactive' }
+]
+
+async function handleModeChange(value: string) {
+  const success = await switchWallpaperMode(value as any)
+  if (success) {
+    message.success(
+      value === 'interactive'
+        ? '已切换到交互壁纸模式'
+        : '已切换到静态壁纸模式'
+    )
+  } else {
+    message.error('模式切换失败')
+  }
+}
 
 function updatePreview() {
   if (!previewCanvas.value || !store.activeCountdown) return

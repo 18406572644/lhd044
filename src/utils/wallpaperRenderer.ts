@@ -10,7 +10,7 @@ export interface RenderOptions {
   allCountdowns?: CountdownItem[]
 }
 
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
   return result
     ? {
@@ -21,7 +21,7 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
     : { r: 126, g: 200, b: 227 }
 }
 
-function rgba(hex: string, alpha: number): string {
+export function rgba(hex: string, alpha: number): string {
   const { r, g, b } = hexToRgb(hex)
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
@@ -173,7 +173,7 @@ export function renderWallpaper(canvas: HTMLCanvasElement, options: RenderOption
   return canvas.toDataURL('image/png')
 }
 
-function drawBackground(
+export function drawBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -293,7 +293,7 @@ function drawDecorativeCircles(
   ctx.restore()
 }
 
-function drawCountdownContent(
+export function drawCountdownContent(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -349,7 +349,7 @@ function drawCountdownContent(
   ctx.restore()
 }
 
-function drawOtherCountdowns(
+export function drawOtherCountdowns(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -400,7 +400,7 @@ function drawOtherCountdowns(
   })
 }
 
-function drawFooter(
+export function drawFooter(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,

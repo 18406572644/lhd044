@@ -39,60 +39,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: (url: string) => ipcRenderer.send('shell:open-external', url),
 
-  onDataUpdated: (callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on('data:updated', handler)
-    return () => ipcRenderer.removeListener('data:updated', handler)
-  },
-
-  interactiveWallpaperShow: () => ipcRenderer.invoke('wallpaper:interactive-show'),
-  interactiveWallpaperHide: () => ipcRenderer.invoke('wallpaper:interactive-hide'),
-  interactiveWallpaperClose: () => ipcRenderer.invoke('wallpaper:interactive-close'),
-  interactiveWallpaperSetClickThrough: (clickThrough: boolean) =>
-    ipcRenderer.invoke('wallpaper:interactive-set-click-through', clickThrough),
-  interactiveWallpaperSendAction: (action: string) =>
-    ipcRenderer.invoke('wallpaper:interactive-send-action', action),
-  interactiveWallpaperIsRunning: () => ipcRenderer.invoke('wallpaper:interactive-is-running'),
-  interactiveWallpaperUpdateData: (data: any) =>
-    ipcRenderer.invoke('wallpaper:interactive-update-data', data),
-  interactiveWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:interactive-request-data'),
-
-  animatedWallpaperShow: () => ipcRenderer.invoke('wallpaper:animated-show'),
-  animatedWallpaperHide: () => ipcRenderer.invoke('wallpaper:animated-hide'),
-  animatedWallpaperClose: () => ipcRenderer.invoke('wallpaper:animated-close'),
-  animatedWallpaperIsRunning: () => ipcRenderer.invoke('wallpaper:animated-is-running'),
-  animatedWallpaperUpdateData: (data: any) =>
-    ipcRenderer.invoke('wallpaper:animated-update-data', data),
-  animatedWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:animated-request-data'),
-
-  onInteractiveAction: (callback: (action: string) => void) => {
-    const handler = (_e: any, action: string) => callback(action)
-    ipcRenderer.on('wallpaper:interactive-action', handler)
-    return () => ipcRenderer.removeListener('wallpaper:interactive-action', handler)
-  },
-
-  onWallpaperUpdateData: (callback: (data: any) => void) => {
-    const handler = (_e: any, data: any) => callback(data)
-    ipcRenderer.on('wallpaper:update-data', handler)
-    return () => ipcRenderer.removeListener('wallpaper:update-data', handler)
-  },
-
-  onWallpaperRequestData: (callback: () => void) => {
-    const handler = (_e: any) => callback()
-    ipcRenderer.on('wallpaper:request-data', handler)
-    return () => ipcRenderer.removeListener('wallpaper:request-data', handler)
-  },
-
-  onWallpaperWindowReady: (callback: () => void) => {
-    const handler = (_e: any) => callback()
-    ipcRenderer.on('wallpaper:window-ready', handler)
-    return () => ipcRenderer.removeListener('wallpaper:window-ready', handler)
-  },
-
   selectImageFile: () => ipcRenderer.invoke('dialog:select-image'),
   saveBackupFile: (content: string, filename: string) =>
     ipcRenderer.invoke('dialog:save-backup', { content, filename }),
-  openBackupFile: () => ipcRenderer.invoke('dialog:open-backup')
+  openBackupFile: () => ipcRenderer.invoke('dialog:open-backup'),
+
+  setWallpaperMode: (mode: 'static' | 'interactive') =>
+    ipcRenderer.invoke('wallpaper:set-mode', mode),
+  wallpaperWindowExists: () => ipcRenderer.invoke('wallpaper:window-exists'),
+  setWallpaperClickThrough: (clickThrough: boolean) =>
+    ipcRenderer.invoke('wallpaper:set-click-through', clickThrough),
+
+  animatedWallpaperRequestData: () => ipcRenderer.invoke('wallpaper:request-data'),
+  broadcastWallpaperData: (data: any) =>
+    ipcRenderer.send('wallpaper:broadcast-data', data),
+
+  onWallpaperUpdateData: (callback: (data: any) => void) => {
+    ipcRenderer.on('wallpaper:update-data', callback)
+    return () => ipcRenderer.removeListener('wallpaper:update-data', callback)
+  },
+
+  cycleCountdown: () => ipcRenderer.send('wallpaper:cycle-countdown'),
+  newCountdown: () => ipcRenderer.send('wallpaper:new-countdown'),
+  showMainWindow: () => ipcRenderer.send('wallpaper:show-main-window'),
+
+  onCycleCountdown: (callback: () => void) => {
+    ipcRenderer.on('wallpaper:cycle-countdown', callback)
+    return () => ipcRenderer.removeListener('wallpaper:cycle-countdown', callback)
+  },
+  onNewCountdown: (callback: () => void) => {
+    ipcRenderer.on('wallpaper:new-countdown', callback)
+    return () => ipcRenderer.removeListener('wallpaper:new-countdown', callback)
+  }
 })
 
 export type ElectronAPI = typeof window.electronAPI

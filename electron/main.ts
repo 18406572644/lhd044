@@ -15,11 +15,9 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 
 let mainWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
-let interactiveWallpaperWindow: BrowserWindow | null = null
-let animatedWallpaperWindow: BrowserWindow | null = null
+let wallpaperWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let wallpaperUpdateTimer: NodeJS.Timeout | null = null
-let isQuitting = false
 
 const preload = join(__dirname, '../dist-electron/preload.js')
 const url = process.env.VITE_DEV_SERVER_URL
@@ -69,7 +67,7 @@ function createWindow() {
   })
 
   mainWindow.on('close', (e) => {
-    if (process.platform !== 'darwin' && !isQuitting) {
+    if (process.platform !== 'darwin') {
       e.preventDefault()
       mainWindow?.hide()
     }
@@ -83,11 +81,6 @@ function createWindow() {
 }
 
 function createMiniWindow() {
-  if (miniWindow && !miniWindow.isDestroyed()) {
-    miniWindow.show()
-    return
-  }
-
   miniWindow = new BrowserWindow({
     title: '迷你倒计时',
     width: 320,
@@ -111,163 +104,35 @@ function createMiniWindow() {
 
   miniWindow.setAlwaysOnTop(true, 'screen-saver')
 
-  miniWindow.webContents.on('did-fail-load', (_e, code, desc) => {
-    console.error('Mini window failed to load:', code, desc)
-  })
-
-  miniWindow.webContents.on('render-process-gone', (_e, details) => {
-    console.error('Mini window render process gone:', details)
-  })
-
-  miniWindow.on('closed', () => {
-    miniWindow = null
-  })
-
   if (url) {
     miniWindow.loadURL(url + '#/mini')
   } else {
     miniWindow.loadFile(indexHtml, { hash: '/mini' })
   }
-
-  miniWindow.once('ready-to-show', () => {
-    miniWindow?.show()
-  })
 }
 
-function createInteractiveWallpaperWindow() {
-  if (interactiveWallpaperWindow) {
-    interactiveWallpaperWindow.show()
-    return
+function createWallpaperWindow(clickThrough: boolean = false) {
+  if (wallpaperWindow) {
+    return wallpaperWindow
   }
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height } = primaryDisplay.size
-  const { x, y } = primaryDisplay.bounds
+  const displays = screen.getAllDisplays()
+  let minX = Infinity, minY = Infinity
+  let maxX = -Infinity, maxY = -Infinity
 
-  interactiveWallpaperWindow = new BrowserWindow({
-    title: 'Interactive Wallpaper',
-    width,
-    height,
-    x,
-    y,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    show: false,
-    hasShadow: false,
-    backgroundColor: '#00000000',
-    focusable: true,
-    webPreferences: {
-      preload,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false
-    }
+  displays.forEach((d) => {
+    const { x, y, width, height } = d.bounds
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + width)
+    maxY = Math.max(maxY, y + height)
   })
 
-  interactiveWallpaperWindow.setAlwaysOnTop(true, 'normal')
-  interactiveWallpaperWindow.setVisibleOnAllWorkspaces(true)
-  interactiveWallpaperWindow.setIgnoreMouseEvents(false)
-
-  interactiveWallpaperWindow.on('closed', () => {
-    interactiveWallpaperWindow = null
-  })
-
-  if (url) {
-    interactiveWallpaperWindow.loadURL(url + '#/interactive-wallpaper')
-  } else {
-    interactiveWallpaperWindow.loadFile(indexHtml, { hash: '/interactive-wallpaper' })
-  }
-
-  interactiveWallpaperWindow.once('ready-to-show', () => {
-    interactiveWallpaperWindow?.showInactive()
-  })
-
-  interactiveWallpaperWindow.webContents.on('did-finish-load', () => {
-    interactiveWallpaperWindow?.webContents.send('wallpaper:window-ready')
-  })
-}
-
-function setWallpaperWindowBehindDesktopIcons(win: BrowserWindow) {
-  if (process.platform !== 'win32') return
-
-  try {
-    const hWnd = win.getNativeWindowHandle()
-    const hwndNum = process.arch === 'x64' ? hWnd.readBigInt64LE(0).toString() : hWnd.readInt32LE(0).toString()
-    const scriptContent = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class WallpaperWin32 {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string lpszClass, IntPtr lpszWindow);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
-}
-"@
-
-$progman = [WallpaperWin32]::FindWindow("Progman", $null)
-$result = [UIntPtr]::Zero
-[WallpaperWin32]::SendMessageTimeout($progman, 0x052C, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 1000, [ref]$result) | Out-Null
-
-$workerw = [IntPtr]::Zero
-do {
-    $workerw = [WallpaperWin32]::FindWindowEx([IntPtr]::Zero, $workerw, "WorkerW", [IntPtr]::Zero)
-    if (-not $workerw.Equals([IntPtr]::Zero)) {
-        $shellView = [WallpaperWin32]::FindWindowEx($workerw, [IntPtr]::Zero, "SHELLDLL_DefView", [IntPtr]::Zero)
-        if (-not $shellView.Equals([IntPtr]::Zero)) {
-            break
-        }
-    }
-} while (-not $workerw.Equals([IntPtr]::Zero))
-
-$handle = New-Object System.IntPtr(${hwndNum})
-[WallpaperWin32]::SetParent($handle, $workerw) | Out-Null
-`
-    const scriptPath = join(getAppDataPath(), 'set_wallpaper_layer.ps1')
-    writeFileSync(scriptPath, scriptContent, 'utf-8')
-    exec(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-      { timeout: 10000 },
-      (error) => {
-        if (error) {
-          console.warn('Failed to set wallpaper window layer, falling back to always on bottom:', error.message)
-        }
-      }
-    )
-  } catch (e) {
-    console.warn('Failed to inject wallpaper window behind icons:', e)
-  }
-}
-
-function createAnimatedWallpaperWindow() {
-  if (animatedWallpaperWindow) {
-    animatedWallpaperWindow.show()
-    return
-  }
-
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height } = primaryDisplay.size
-  const { x, y } = primaryDisplay.bounds
-
-  animatedWallpaperWindow = new BrowserWindow({
-    title: 'Animated Wallpaper',
-    width,
-    height,
-    x,
-    y,
+  wallpaperWindow = new BrowserWindow({
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
     frame: false,
     transparent: true,
     resizable: false,
@@ -275,50 +140,69 @@ function createAnimatedWallpaperWindow() {
     minimizable: false,
     maximizable: false,
     closable: false,
-    alwaysOnTop: false,
+    focusable: !clickThrough,
     skipTaskbar: true,
-    show: false,
+    alwaysOnTop: false,
     hasShadow: false,
+    paintWhenInitiallyHidden: true,
+    show: false,
     backgroundColor: '#00000000',
-    focusable: false,
+    type: 'desktop',
     webPreferences: {
       preload,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false
     }
   })
 
-  animatedWallpaperWindow.setAlwaysOnTop(false)
-  animatedWallpaperWindow.setVisibleOnAllWorkspaces(true)
-  animatedWallpaperWindow.setIgnoreMouseEvents(true)
-  animatedWallpaperWindow.setFullScreenable(false)
-
-  animatedWallpaperWindow.on('closed', () => {
-    animatedWallpaperWindow = null
-  })
+  wallpaperWindow.setIgnoreMouseEvents(clickThrough, { forward: true })
+  wallpaperWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  wallpaperWindow.setAlwaysOnTop(false)
+  wallpaperWindow.setMenuBarVisibility(false)
 
   if (url) {
-    animatedWallpaperWindow.loadURL(url + '#/animated-wallpaper')
+    wallpaperWindow.loadURL(url + '#/interactive-wallpaper')
   } else {
-    animatedWallpaperWindow.loadFile(indexHtml, { hash: '/animated-wallpaper' })
+    wallpaperWindow.loadFile(indexHtml, { hash: '/interactive-wallpaper' })
   }
 
-  animatedWallpaperWindow.once('ready-to-show', () => {
-    animatedWallpaperWindow?.showInactive()
-    if (process.platform === 'win32') {
-      setTimeout(() => {
-        if (animatedWallpaperWindow) {
-          setWallpaperWindowBehindDesktopIcons(animatedWallpaperWindow)
-        }
-      }, 100)
-    }
+  wallpaperWindow.once('ready-to-show', () => {
+    wallpaperWindow?.showInactive()
   })
 
-  animatedWallpaperWindow.webContents.on('did-finish-load', () => {
-    animatedWallpaperWindow?.webContents.send('wallpaper:window-ready')
+  wallpaperWindow.webContents.on('did-finish-load', () => {
+    broadcastCountdownData()
   })
+
+  return wallpaperWindow
 }
+
+function destroyWallpaperWindow() {
+  if (wallpaperWindow) {
+    wallpaperWindow.destroy()
+    wallpaperWindow = null
+  }
+}
+
+function setWallpaperClickThrough(clickThrough: boolean) {
+  if (wallpaperWindow) {
+    wallpaperWindow.setIgnoreMouseEvents(clickThrough, { forward: true })
+  }
+}
+
+function broadcastCountdownData() {
+  const data = lastSentData
+  if (wallpaperWindow && data) {
+    wallpaperWindow.webContents.send('wallpaper:update-data', data)
+  }
+  if (miniWindow && data) {
+    miniWindow.webContents.send('wallpaper:update-data', data)
+  }
+}
+
+let lastSentData: any = null
 
 function createTray() {
   const iconPath = join(process.env.VITE_PUBLIC || '', 'tray.png')
@@ -362,39 +246,31 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: '切换壁纸模式',
+      submenu: [
+        {
+          label: '静态壁纸模式',
+          type: 'radio',
+          checked: !wallpaperWindow,
+          click: () => {
+            ipcMain.emit('wallpaper:set-mode', null, 'static')
+          }
+        },
+        {
+          label: '交互壁纸模式',
+          type: 'radio',
+          checked: !!wallpaperWindow,
+          click: () => {
+            ipcMain.emit('wallpaper:set-mode', null, 'interactive')
+          }
+        }
+      ]
+    },
+    {
       label: '刷新壁纸',
       click: () => {
         mainWindow?.webContents.send('wallpaper:refresh')
-      }
-    },
-    {
-      label: '交互壁纸',
-      type: 'checkbox',
-      checked: !!interactiveWallpaperWindow,
-      click: (menuItem) => {
-        if (menuItem.checked) {
-          animatedWallpaperWindow?.close()
-          animatedWallpaperWindow = null
-          createInteractiveWallpaperWindow()
-        } else {
-          interactiveWallpaperWindow?.close()
-          interactiveWallpaperWindow = null
-        }
-      }
-    },
-    {
-      label: '动态壁纸',
-      type: 'checkbox',
-      checked: !!animatedWallpaperWindow,
-      click: (menuItem) => {
-        if (menuItem.checked) {
-          interactiveWallpaperWindow?.close()
-          interactiveWallpaperWindow = null
-          createAnimatedWallpaperWindow()
-        } else {
-          animatedWallpaperWindow?.close()
-          animatedWallpaperWindow = null
-        }
+        broadcastCountdownData()
       }
     },
     { type: 'separator' },
@@ -412,10 +288,6 @@ function createTray() {
     {
       label: '退出',
       click: () => {
-        isQuitting = true
-        miniWindow?.close()
-        interactiveWallpaperWindow?.close()
-        animatedWallpaperWindow?.close()
         app.quit()
       }
     }
@@ -434,36 +306,24 @@ function createTray() {
 
 function setWallpaperWindows(imagePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const scriptContent = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class WallpaperAPI {
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-}
-"@
-[WallpaperAPI]::SystemParametersInfo(20, 0, "${imagePath.replace(/"/g, '""')}", 3)
-`
-    const scriptPath = join(getAppDataPath(), 'set_wallpaper.ps1')
-    try {
-      writeFileSync(scriptPath, scriptContent, 'utf-8')
-    } catch (e) {
-      reject(e)
-      return
-    }
-    exec(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-      { timeout: 15000 },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error('setWallpaper error:', error.message, stderr)
-          reject(error)
-        } else {
-          resolve()
-        }
+    const psScript = `
+      Add-Type -TypeDefinition @"
+      using System;
+      using System.Runtime.InteropServices;
+      public class Wallpaper {
+          [DllImport("user32.dll", CharSet = CharSet.Auto)]
+          public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
       }
-    )
+"@
+      [Wallpaper]::SystemParametersInfo(20, 0, "${imagePath.replace(/'/g, "''")}", 3)
+    `
+    exec(`powershell -Command "${psScript}"`, (error) => {
+      if (error) {
+        reject(error)
+      } else {
+        resolve()
+      }
+    })
   })
 }
 
@@ -479,6 +339,14 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+
+  screen.on('display-metrics-changed', () => {
+    if (wallpaperWindow) {
+      const clickThrough = !wallpaperWindow.isFocusable()
+      destroyWallpaperWindow()
+      createWallpaperWindow(clickThrough)
+    }
+  })
 })
 
 app.on('window-all-closed', () => {
@@ -491,7 +359,7 @@ app.on('before-quit', () => {
   if (wallpaperUpdateTimer) {
     clearInterval(wallpaperUpdateTimer)
   }
-  animatedWallpaperWindow?.close()
+  destroyWallpaperWindow()
 })
 
 ipcMain.handle('app:get-login-settings', () => {
@@ -550,95 +418,53 @@ ipcMain.handle('window:main-hide', () => {
   return true
 })
 
-ipcMain.handle('wallpaper:interactive-show', () => {
-  createInteractiveWallpaperWindow()
-  return true
-})
-
-ipcMain.handle('wallpaper:interactive-hide', () => {
-  interactiveWallpaperWindow?.hide()
-  return true
-})
-
-ipcMain.handle('wallpaper:interactive-close', () => {
-  interactiveWallpaperWindow?.close()
-  interactiveWallpaperWindow = null
-  return true
-})
-
-ipcMain.handle('wallpaper:interactive-set-click-through', (_e, clickThrough: boolean) => {
-  if (interactiveWallpaperWindow) {
-    interactiveWallpaperWindow.setIgnoreMouseEvents(clickThrough)
+ipcMain.handle('wallpaper:set-mode', (_e, mode: 'static' | 'interactive') => {
+  if (mode === 'interactive') {
+    if (!wallpaperWindow) {
+      createWallpaperWindow(false)
+    }
+    return true
+  } else {
+    destroyWallpaperWindow()
     return true
   }
-  return false
 })
 
-ipcMain.handle('wallpaper:interactive-send-action', (_e, action: string) => {
-  mainWindow?.webContents.send('wallpaper:interactive-action', action)
+ipcMain.handle('wallpaper:window-exists', () => {
+  return !!wallpaperWindow
+})
+
+ipcMain.handle('wallpaper:set-click-through', (_e, clickThrough: boolean) => {
+  setWallpaperClickThrough(clickThrough)
   return true
 })
 
-ipcMain.handle('wallpaper:interactive-is-running', () => {
-  return !!interactiveWallpaperWindow
+ipcMain.handle('wallpaper:request-data', () => {
+  return lastSentData
 })
 
-ipcMain.handle('wallpaper:interactive-update-data', (_e, data: any) => {
-  if (interactiveWallpaperWindow && !interactiveWallpaperWindow.isDestroyed()) {
-    interactiveWallpaperWindow.webContents.send('wallpaper:update-data', data)
-    return true
+ipcMain.on('wallpaper:broadcast-data', (_e, data) => {
+  lastSentData = data
+  broadcastCountdownData()
+})
+
+ipcMain.on('wallpaper:cycle-countdown', () => {
+  mainWindow?.webContents.send('wallpaper:cycle-countdown')
+})
+
+ipcMain.on('wallpaper:new-countdown', () => {
+  if (mainWindow) {
+    mainWindow.show()
+    mainWindow.focus()
   }
-  return false
+  mainWindow?.webContents.send('wallpaper:new-countdown')
 })
 
-ipcMain.handle('wallpaper:interactive-request-data', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('wallpaper:request-data')
-    return true
+ipcMain.on('wallpaper:show-main-window', () => {
+  if (mainWindow) {
+    mainWindow.show()
+    mainWindow.focus()
   }
-  return false
-})
-
-ipcMain.on('wallpaper:window-ready', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('wallpaper:request-data')
-  }
-})
-
-ipcMain.handle('wallpaper:animated-show', () => {
-  createAnimatedWallpaperWindow()
-  return true
-})
-
-ipcMain.handle('wallpaper:animated-hide', () => {
-  animatedWallpaperWindow?.hide()
-  return true
-})
-
-ipcMain.handle('wallpaper:animated-close', () => {
-  animatedWallpaperWindow?.close()
-  animatedWallpaperWindow = null
-  return true
-})
-
-ipcMain.handle('wallpaper:animated-is-running', () => {
-  return !!animatedWallpaperWindow
-})
-
-ipcMain.handle('wallpaper:animated-update-data', (_e, data: any) => {
-  if (animatedWallpaperWindow && !animatedWallpaperWindow.isDestroyed()) {
-    animatedWallpaperWindow.webContents.send('wallpaper:update-data', data)
-    return true
-  }
-  return false
-})
-
-ipcMain.handle('wallpaper:animated-request-data', () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('wallpaper:request-data')
-    return true
-  }
-  return false
 })
 
 ipcMain.handle('data:save', async (_e, data: any) => {
@@ -647,12 +473,7 @@ ipcMain.handle('data:save', async (_e, data: any) => {
   return new Promise((resolve, reject) => {
     writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8', (err) => {
       if (err) reject(err)
-      else {
-        if (miniWindow && !miniWindow.isDestroyed()) {
-          miniWindow.webContents.send('data:updated')
-        }
-        resolve(true)
-      }
+      else resolve(true)
     })
   })
 })

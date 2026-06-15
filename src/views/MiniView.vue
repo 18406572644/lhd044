@@ -176,7 +176,7 @@ onMounted(async () => {
   updateDiff()
 
   if (window.electronAPI) {
-    removeDataUpdated = window.electronAPI.onDataUpdated(() => {
+    removeDataUpdated = window.electronAPI.onWallpaperUpdateData(() => {
       reloadData()
     })
   }

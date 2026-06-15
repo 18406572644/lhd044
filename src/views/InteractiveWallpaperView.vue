@@ -1,24 +1,37 @@
 <template>
-  <div class="interactive-wallpaper" id="interactive-wallpaper-root">
+  <div
+    id="interactive-wallpaper-root"
+    class="interactive-wallpaper"
+    @mousemove="handleMouseMove"
+    @mouseleave="handleMouseLeave"
+    @click="handleClick"
+    @dblclick="handleDoubleClick"
+  >
     <canvas ref="wallpaperCanvas" class="wallpaper-canvas" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { InteractiveRenderer } from '@/utils/interactiveRenderer'
-import type { CountdownItem, WallpaperStyle, InteractiveWallpaperConfig, InteractiveState, InteractiveAction } from '@/types'
-import { InteractiveWallpaperEngine } from '@/utils/interactiveWallpaper'
+import { InteractiveWallpaperRenderer } from '@/utils/interactiveWallpaperRenderer'
+import type {
+  CountdownItem,
+  WallpaperStyle,
+  AnimatedWallpaperConfig,
+  InteractiveWallpaperConfig,
+  HotCornerArea
+} from '@/types'
 
 const wallpaperCanvas = ref<HTMLCanvasElement | null>(null)
-let renderer: InteractiveRenderer | null = null
-let engine: InteractiveWallpaperEngine | null = null
+let renderer: InteractiveWallpaperRenderer | null = null
 let removeDataHandler: (() => void) | null = null
+let removeVisibilityHandler: (() => void) | null = null
 
 let currentCountdown: CountdownItem | null = null
 let currentStyle: WallpaperStyle = 'gradient'
-let currentConfig: InteractiveWallpaperConfig | null = null
-let currentState: InteractiveState = 'idle'
+let currentAnimatedConfig: AnimatedWallpaperConfig | null = null
+let currentInteractiveConfig: InteractiveWallpaperConfig | null = null
+let allCountdowns: CountdownItem[] = []
 
 function initCanvas() {
   if (!wallpaperCanvas.value) return
@@ -35,28 +48,31 @@ function initCanvas() {
     root.style.height = screenHeight + 'px'
   }
 
-  renderer = new InteractiveRenderer()
+  renderer = new InteractiveWallpaperRenderer()
   renderer.mount(canvas)
-  engine = renderer.getEngine()
 
-  engine.setActionHandler((action: InteractiveAction) => {
-    if (window.electronAPI) {
-      window.electronAPI.interactiveWallpaperSendAction(JSON.stringify(action))
-    }
-  })
-
-  engine.setStateChangeHandler((state: InteractiveState) => {
-    currentState = state
+  renderer.setHooks({
+    onCountdownClick: handleCountdownClick,
+    onDoubleClick: handleRendererDoubleClick,
+    onHotCorner: handleHotCorner,
+    onIdleEnter: () => {},
+    onIdleLeave: () => {}
   })
 
   renderer.start()
-
   requestData()
 }
 
 function requestData() {
   if (window.electronAPI) {
-    window.electronAPI.interactiveWallpaperRequestData()
+    window.electronAPI.animatedWallpaperRequestData()
+      .then((data) => {
+        if (data) {
+          handleUpdateData(data)
+        } else {
+          setTimeout(requestData, 1000)
+        }
+      })
       .catch(() => {
         setTimeout(requestData, 1000)
       })
@@ -66,16 +82,19 @@ function requestData() {
 function handleUpdateData(data: any) {
   if (data.countdown) currentCountdown = data.countdown
   if (data.style) currentStyle = data.style
-  if (data.interactiveConfig) currentConfig = data.interactiveConfig
+  if (data.animatedConfig) currentAnimatedConfig = data.animatedConfig
+  if (data.interactiveConfig) currentInteractiveConfig = data.interactiveConfig
+  if (data.allCountdowns) allCountdowns = data.allCountdowns
 
-  if (renderer && currentCountdown && currentConfig) {
+  if (renderer && currentCountdown && currentAnimatedConfig && currentInteractiveConfig) {
     renderer.updateOptions({
       width: wallpaperCanvas.value?.width || window.innerWidth,
       height: wallpaperCanvas.value?.height || window.innerHeight,
       countdown: currentCountdown,
       style: currentStyle,
-      interactiveConfig: currentConfig,
-      interactiveState: currentState
+      allCountdowns,
+      animatedConfig: currentAnimatedConfig,
+      interactiveConfig: currentInteractiveConfig
     })
     renderer.setHasData(true)
   }
@@ -99,15 +118,86 @@ function handleResize() {
 
   renderer.resize(screenWidth, screenHeight)
 
-  if (currentCountdown && currentConfig) {
+  if (currentCountdown && currentAnimatedConfig && currentInteractiveConfig) {
     renderer.updateOptions({
       width: screenWidth,
       height: screenHeight,
       countdown: currentCountdown,
       style: currentStyle,
-      interactiveConfig: currentConfig,
-      interactiveState: currentState
+      allCountdowns,
+      animatedConfig: currentAnimatedConfig,
+      interactiveConfig: currentInteractiveConfig
     })
+  }
+}
+
+function handleMouseMove(e: MouseEvent) {
+  if (renderer) {
+    renderer.setMousePosition(e.clientX, e.clientY)
+  }
+}
+
+function handleMouseLeave() {
+  if (renderer) {
+    renderer.setMousePosition(-1000, -1000)
+  }
+}
+
+function handleClick(e: MouseEvent) {
+  if (renderer) {
+    renderer.handleClick(e.clientX, e.clientY)
+  }
+}
+
+function handleDoubleClick() {
+  if (window.electronAPI) {
+    window.electronAPI.showMainWindow()
+  }
+}
+
+function handleRendererDoubleClick() {
+  if (window.electronAPI) {
+    window.electronAPI.showMainWindow()
+  }
+}
+
+function handleCountdownClick() {
+  if (window.electronAPI) {
+    window.electronAPI.cycleCountdown()
+  }
+}
+
+function handleHotCorner(area: HotCornerArea) {
+  switch (area) {
+    case 'top-left':
+      if (window.electronAPI) {
+        window.electronAPI.showMainWindow()
+      }
+      break
+    case 'top-right':
+      if (window.electronAPI) {
+        window.electronAPI.setWallpaperClickThrough(true)
+        setTimeout(() => {
+          window.electronAPI.setWallpaperMode('static')
+        }, 300)
+      }
+      break
+    case 'bottom-left':
+      if (window.electronAPI) {
+        window.electronAPI.miniWindowToggle()
+      }
+      break
+    case 'bottom-right':
+      if (window.electronAPI) {
+        window.electronAPI.newCountdown()
+      }
+      break
+  }
+}
+
+function handleVisibilityChange() {
+  if (renderer) {
+    renderer.setVisible(!document.hidden)
   }
 }
 
@@ -121,6 +211,7 @@ onMounted(() => {
   }
 
   window.addEventListener('resize', handleResize)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault()
@@ -132,12 +223,12 @@ onUnmounted(() => {
     renderer.unmount()
     renderer = null
   }
-  engine = null
   if (removeDataHandler) {
     removeDataHandler()
     removeDataHandler = null
   }
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -150,17 +241,17 @@ onUnmounted(() => {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: -1;
+  z-index: 0;
   margin: 0;
   padding: 0;
-  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .wallpaper-canvas {
   width: 100%;
   height: 100%;
   display: block;
-  pointer-events: auto;
   cursor: default;
 }
 </style>
