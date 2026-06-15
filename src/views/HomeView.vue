@@ -54,6 +54,16 @@
             />
             <n-button
               size="small"
+              :type="currentMode === 'interactive' ? 'warning' : 'default'"
+              @click="toggleInteractiveWallpaper"
+            >
+              <template #icon>
+                <n-icon><BulbOutlined /></n-icon>
+              </template>
+              {{ isInteractiveRunning ? '交互模式' : '静态模式' }}
+            </n-button>
+            <n-button
+              size="small"
               :loading="isGenerating"
               @click="generateAndSetWallpaper"
             >
@@ -120,7 +130,8 @@ import {
   SettingOutlined,
   HistoryOutlined,
   AppstoreOutlined,
-  SyncOutlined
+  SyncOutlined,
+  BulbOutlined
 } from '@vicons/antd'
 import CountdownCard from '@/components/CountdownCard.vue'
 import CountdownForm from '@/components/CountdownForm.vue'
@@ -134,7 +145,7 @@ const message = useMessage()
 const dialog = useDialog()
 const store = useCountdownStore()
 
-const { canvas: wallpaperCanvas, isGenerating, generateAndSetWallpaper } = useWallpaper()
+const { canvas: wallpaperCanvas, isGenerating, generateAndSetWallpaper, currentMode, toggleInteractiveWallpaper, isInteractiveRunning } = useWallpaper()
 
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const showForm = ref(false)

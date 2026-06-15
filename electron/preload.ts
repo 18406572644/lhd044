@@ -39,6 +39,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: (url: string) => ipcRenderer.send('shell:open-external', url),
 
+  onDataUpdated: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('data:updated', handler)
+    return () => ipcRenderer.removeListener('data:updated', handler)
+  },
+
+  interactiveWallpaperShow: () => ipcRenderer.invoke('wallpaper:interactive-show'),
+  interactiveWallpaperHide: () => ipcRenderer.invoke('wallpaper:interactive-hide'),
+  interactiveWallpaperClose: () => ipcRenderer.invoke('wallpaper:interactive-close'),
+  interactiveWallpaperSetClickThrough: (clickThrough: boolean) =>
+    ipcRenderer.invoke('wallpaper:interactive-set-click-through', clickThrough),
+  interactiveWallpaperSendAction: (action: string) =>
+    ipcRenderer.invoke('wallpaper:interactive-send-action', action),
+  interactiveWallpaperIsRunning: () => ipcRenderer.invoke('wallpaper:interactive-is-running'),
+  interactiveWallpaperUpdateData: (data: any) =>
+    ipcRenderer.invoke('wallpaper:interactive-update-data', data),
+
+  onInteractiveAction: (callback: (action: string) => void) => {
+    const handler = (_e: any, action: string) => callback(action)
+    ipcRenderer.on('wallpaper:interactive-action', handler)
+    return () => ipcRenderer.removeListener('wallpaper:interactive-action', handler)
+  },
+
+  onWallpaperUpdateData: (callback: (data: any) => void) => {
+    const handler = (_e: any, data: any) => callback(data)
+    ipcRenderer.on('wallpaper:update-data', handler)
+    return () => ipcRenderer.removeListener('wallpaper:update-data', handler)
+  },
+
   selectImageFile: () => ipcRenderer.invoke('dialog:select-image'),
   saveBackupFile: (content: string, filename: string) =>
     ipcRenderer.invoke('dialog:save-backup', { content, filename }),

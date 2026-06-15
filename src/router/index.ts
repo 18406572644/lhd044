@@ -12,6 +12,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/MiniView.vue')
   },
   {
+    path: '/interactive-wallpaper',
+    name: 'InteractiveWallpaper',
+    component: () => import('@/views/InteractiveWallpaperView.vue')
+  },
+  {
     path: '/history',
     name: 'History',
     component: () => import('@/views/HistoryView.vue')

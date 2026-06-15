@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useCountdownStore } from '@/stores/countdown'
 import { renderWallpaperAsync } from '@/utils/wallpaperRenderer'
+import type { WallpaperMode, InteractiveAction } from '@/types'
 import dayjs from 'dayjs'
 
 export function useWallpaper() {
@@ -8,9 +9,12 @@ export function useWallpaper() {
   const canvas = ref<HTMLCanvasElement | null>(null)
   const isGenerating = ref(false)
   const lastWallpaperPath = ref<string>('')
+  const currentMode = ref<WallpaperMode>('static')
+  const isInteractiveRunning = ref(false)
   let tickTimer: number | null = null
   let removeTick: (() => void) | null = null
   let removeRefresh: (() => void) | null = null
+  let removeInteractiveAction: (() => void) | null = null
   let rotateTimer: number | null = null
 
   async function generateAndSetWallpaper() {
@@ -81,26 +85,156 @@ export function useWallpaper() {
     }
   }
 
+  async function switchToMode(mode: WallpaperMode) {
+    currentMode.value = mode
+    store.updateSettings({ wallpaperMode: mode })
+
+    if (mode === 'interactive') {
+      await startInteractiveWallpaper()
+      stopTickTimer()
+    } else {
+      await stopInteractiveWallpaper()
+      startTickTimer()
+    }
+  }
+
+  async function startInteractiveWallpaper() {
+    if (!window.electronAPI) return
+    try {
+      await window.electronAPI.interactiveWallpaperShow()
+      isInteractiveRunning.value = true
+      syncInteractiveData()
+    } catch (e) {
+      console.error('Failed to start interactive wallpaper:', e)
+    }
+  }
+
+  async function stopInteractiveWallpaper() {
+    if (!window.electronAPI) return
+    try {
+      await window.electronAPI.interactiveWallpaperClose()
+      isInteractiveRunning.value = false
+    } catch (e) {
+      console.error('Failed to stop interactive wallpaper:', e)
+    }
+  }
+
+  async function toggleInteractiveWallpaper() {
+    if (isInteractiveRunning.value) {
+      await switchToMode('static')
+    } else {
+      await switchToMode('interactive')
+    }
+  }
+
+  function syncInteractiveData() {
+    if (!window.electronAPI || !isInteractiveRunning.value) return
+    const countdown = store.activeCountdown
+    if (!countdown) return
+    window.electronAPI.interactiveWallpaperUpdateData({
+      countdown,
+      allCountdowns: store.wallpaperCountdowns,
+      style: store.settings.currentWallpaperStyle,
+      interactiveConfig: store.settings.interactiveConfig
+    })
+  }
+
+  function handleInteractiveAction(action: string) {
+    try {
+      const parsed = JSON.parse(action) as InteractiveAction
+      switch (parsed.type) {
+        case 'switch-countdown': {
+          const list = store.wallpaperCountdowns
+          if (list.length <= 1) break
+          const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
+          if (parsed.direction === 'next') {
+            const nextIndex = (currentIndex + 1) % list.length
+            store.setActiveCountdown(list[nextIndex].id)
+          } else {
+            const prevIndex = (currentIndex - 1 + list.length) % list.length
+            store.setActiveCountdown(list[prevIndex].id)
+          }
+          syncInteractiveData()
+          break
+        }
+        case 'open-main-window': {
+          window.electronAPI?.mainWindowShow()
+          break
+        }
+        case 'new-countdown': {
+          window.electronAPI?.mainWindowShow()
+          break
+        }
+        case 'toggle-mode': {
+          switchToMode('static')
+          break
+        }
+        case 'hot-zone': {
+          const zone = parsed.zone
+          if (zone.action === 'new-countdown') {
+            window.electronAPI?.mainWindowShow()
+          } else if (zone.action === 'toggle-mode') {
+            switchToMode('static')
+          } else if (zone.action === 'next-countdown') {
+            const list = store.wallpaperCountdowns
+            if (list.length > 1) {
+              const currentIndex = list.findIndex(c => c.id === store.settings.activeCountdownId)
+              const nextIndex = (currentIndex + 1) % list.length
+              store.setActiveCountdown(list[nextIndex].id)
+              syncInteractiveData()
+            }
+          } else if (zone.action === 'show-main') {
+            window.electronAPI?.mainWindowShow()
+          }
+          break
+        }
+      }
+    } catch {
+      console.warn('Failed to handle interactive action:', action)
+    }
+  }
+
   onMounted(async () => {
     await store.loadData()
 
-    if (store.settings.autoUpdateWallpaper && window.electronAPI) {
-      window.electronAPI.startWallpaperAutoUpdate(store.settings.wallpaperUpdateInterval)
-      removeTick = window.electronAPI.onWallpaperTick(() => {
-        store.checkExpiredCountdowns()
-        generateAndSetWallpaper()
-      })
-      removeRefresh = window.electronAPI.onWallpaperRefresh(() => {
-        generateAndSetWallpaper()
-      })
+    currentMode.value = store.settings.wallpaperMode
+
+    if (window.electronAPI) {
+      const isRunning = await window.electronAPI.interactiveWallpaperIsRunning()
+      isInteractiveRunning.value = isRunning
+    }
+
+    if (currentMode.value === 'interactive') {
+      startInteractiveWallpaper()
     } else {
-      startTickTimer()
+      if (store.settings.autoUpdateWallpaper && window.electronAPI) {
+        window.electronAPI.startWallpaperAutoUpdate(store.settings.wallpaperUpdateInterval)
+        removeTick = window.electronAPI.onWallpaperTick(() => {
+          store.checkExpiredCountdowns()
+          generateAndSetWallpaper()
+        })
+        removeRefresh = window.electronAPI.onWallpaperRefresh(() => {
+          generateAndSetWallpaper()
+        })
+      } else {
+        startTickTimer()
+      }
+    }
+
+    if (window.electronAPI) {
+      removeInteractiveAction = window.electronAPI.onInteractiveAction((action) => {
+        handleInteractiveAction(action)
+      })
     }
 
     startRotateTimer()
 
     if (store.activeCountdown) {
-      setTimeout(generateAndSetWallpaper, 500)
+      if (currentMode.value === 'static') {
+        setTimeout(generateAndSetWallpaper, 500)
+      } else {
+        setTimeout(syncInteractiveData, 800)
+      }
     }
   })
 
@@ -109,6 +243,7 @@ export function useWallpaper() {
     stopRotateTimer()
     if (removeTick) removeTick()
     if (removeRefresh) removeRefresh()
+    if (removeInteractiveAction) removeInteractiveAction()
     if (window.electronAPI) {
       window.electronAPI.stopWallpaperAutoUpdate()
     }
@@ -117,7 +252,7 @@ export function useWallpaper() {
   watch(
     () => store.settings.wallpaperUpdateInterval,
     () => {
-      if (!window.electronAPI) {
+      if (!window.electronAPI && currentMode.value === 'static') {
         startTickTimer()
       }
     }
@@ -136,14 +271,42 @@ export function useWallpaper() {
   watch(
     () => store.settings.activeCountdownId,
     () => {
-      generateAndSetWallpaper()
+      if (currentMode.value === 'static') {
+        generateAndSetWallpaper()
+      } else {
+        syncInteractiveData()
+      }
     }
+  )
+
+  watch(
+    () => store.settings.currentWallpaperStyle,
+    () => {
+      if (currentMode.value === 'interactive') {
+        syncInteractiveData()
+      }
+    }
+  )
+
+  watch(
+    () => store.settings.interactiveConfig,
+    () => {
+      if (currentMode.value === 'interactive') {
+        syncInteractiveData()
+      }
+    },
+    { deep: true }
   )
 
   return {
     canvas,
     isGenerating,
     lastWallpaperPath,
-    generateAndSetWallpaper
+    currentMode,
+    isInteractiveRunning,
+    generateAndSetWallpaper,
+    switchToMode,
+    toggleInteractiveWallpaper,
+    syncInteractiveData
   }
 }

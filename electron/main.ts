@@ -15,6 +15,7 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 
 let mainWindow: BrowserWindow | null = null
 let miniWindow: BrowserWindow | null = null
+let interactiveWallpaperWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let wallpaperUpdateTimer: NodeJS.Timeout | null = null
 
@@ -80,6 +81,11 @@ function createWindow() {
 }
 
 function createMiniWindow() {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.show()
+    return
+  }
+
   miniWindow = new BrowserWindow({
     title: '迷你倒计时',
     width: 320,
@@ -103,11 +109,81 @@ function createMiniWindow() {
 
   miniWindow.setAlwaysOnTop(true, 'screen-saver')
 
+  miniWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+    console.error('Mini window failed to load:', code, desc)
+  })
+
+  miniWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('Mini window render process gone:', details)
+  })
+
+  miniWindow.on('closed', () => {
+    miniWindow = null
+  })
+
   if (url) {
     miniWindow.loadURL(url + '#/mini')
   } else {
     miniWindow.loadFile(indexHtml, { hash: '/mini' })
   }
+
+  miniWindow.once('ready-to-show', () => {
+    miniWindow?.show()
+  })
+}
+
+function createInteractiveWallpaperWindow() {
+  if (interactiveWallpaperWindow) {
+    interactiveWallpaperWindow.show()
+    return
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width, height } = primaryDisplay.size
+  const { x, y } = primaryDisplay.bounds
+
+  interactiveWallpaperWindow = new BrowserWindow({
+    title: 'Interactive Wallpaper',
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+
+  interactiveWallpaperWindow.setAlwaysOnTop(true, 'screen-saver')
+  interactiveWallpaperWindow.setVisibleOnAllWorkspaces(true)
+  interactiveWallpaperWindow.setIgnoreMouseEvents(false)
+
+  interactiveWallpaperWindow.on('closed', () => {
+    interactiveWallpaperWindow = null
+  })
+
+  if (url) {
+    interactiveWallpaperWindow.loadURL(url + '#/interactive-wallpaper')
+  } else {
+    interactiveWallpaperWindow.loadFile(indexHtml, { hash: '/interactive-wallpaper' })
+  }
+
+  interactiveWallpaperWindow.once('ready-to-show', () => {
+    interactiveWallpaperWindow?.showInactive()
+  })
 }
 
 function createTray() {
@@ -157,6 +233,19 @@ function createTray() {
         mainWindow?.webContents.send('wallpaper:refresh')
       }
     },
+    {
+      label: '交互壁纸',
+      type: 'checkbox',
+      checked: !!interactiveWallpaperWindow,
+      click: (menuItem) => {
+        if (menuItem.checked) {
+          createInteractiveWallpaperWindow()
+        } else {
+          interactiveWallpaperWindow?.close()
+          interactiveWallpaperWindow = null
+        }
+      }
+    },
     { type: 'separator' },
     {
       label: '开机自启动',
@@ -190,24 +279,36 @@ function createTray() {
 
 function setWallpaperWindows(imagePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const psScript = `
-      Add-Type -TypeDefinition @"
-      using System;
-      using System.Runtime.InteropServices;
-      public class Wallpaper {
-          [DllImport("user32.dll", CharSet = CharSet.Auto)]
-          public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-      }
+    const scriptContent = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WallpaperAPI {
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+}
 "@
-      [Wallpaper]::SystemParametersInfo(20, 0, "${imagePath.replace(/'/g, "''")}", 3)
-    `
-    exec(`powershell -Command "${psScript}"`, (error) => {
-      if (error) {
-        reject(error)
-      } else {
-        resolve()
+[WallpaperAPI]::SystemParametersInfo(20, 0, "${imagePath.replace(/"/g, '""')}", 3)
+`
+    const scriptPath = join(getAppDataPath(), 'set_wallpaper.ps1')
+    try {
+      writeFileSync(scriptPath, scriptContent, 'utf-8')
+    } catch (e) {
+      reject(e)
+      return
+    }
+    exec(
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+      { timeout: 15000 },
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error('setWallpaper error:', error.message, stderr)
+          reject(error)
+        } else {
+          resolve()
+        }
       }
-    })
+    )
   })
 }
 
@@ -293,13 +394,59 @@ ipcMain.handle('window:main-hide', () => {
   return true
 })
 
+ipcMain.handle('wallpaper:interactive-show', () => {
+  createInteractiveWallpaperWindow()
+  return true
+})
+
+ipcMain.handle('wallpaper:interactive-hide', () => {
+  interactiveWallpaperWindow?.hide()
+  return true
+})
+
+ipcMain.handle('wallpaper:interactive-close', () => {
+  interactiveWallpaperWindow?.close()
+  interactiveWallpaperWindow = null
+  return true
+})
+
+ipcMain.handle('wallpaper:interactive-set-click-through', (_e, clickThrough: boolean) => {
+  if (interactiveWallpaperWindow) {
+    interactiveWallpaperWindow.setIgnoreMouseEvents(clickThrough)
+    return true
+  }
+  return false
+})
+
+ipcMain.handle('wallpaper:interactive-send-action', (_e, action: string) => {
+  mainWindow?.webContents.send('wallpaper:interactive-action', action)
+  return true
+})
+
+ipcMain.handle('wallpaper:interactive-is-running', () => {
+  return !!interactiveWallpaperWindow
+})
+
+ipcMain.handle('wallpaper:interactive-update-data', (_e, data: any) => {
+  if (interactiveWallpaperWindow) {
+    interactiveWallpaperWindow.webContents.send('wallpaper:update-data', data)
+    return true
+  }
+  return false
+})
+
 ipcMain.handle('data:save', async (_e, data: any) => {
   const filePath = getDataFilePath()
   ensureDir(dirname(filePath))
   return new Promise((resolve, reject) => {
     writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8', (err) => {
       if (err) reject(err)
-      else resolve(true)
+      else {
+        if (miniWindow && !miniWindow.isDestroyed()) {
+          miniWindow.webContents.send('data:updated')
+        }
+        resolve(true)
+      }
     })
   })
 })

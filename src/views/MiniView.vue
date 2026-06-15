@@ -87,6 +87,7 @@ const current = computed(() => list.value[currentIndex.value] || null)
 
 const diff = ref<CountdownDiff>({ days: 0, hours: 0, minutes: 0, seconds: 0, totalMs: 0, isPast: false })
 let timer: number | null = null
+let removeDataUpdated: (() => void) | null = null
 
 const containerStyle = computed(() => {
   if (current.value) {
@@ -131,11 +132,18 @@ function closeMini() {
   }
 }
 
-function startDrag(e: MouseEvent) {
-  if ((e.target as HTMLElement).closest('.mini-actions')) return
-  if (window.electronAPI) {
-    // Drag is handled by -webkit-app-region: drag in CSS
+function startDrag(_e: MouseEvent) {
+}
+
+async function reloadData() {
+  await store.loadData()
+  const idx = list.value.findIndex((c) => c.id === store.settings.activeCountdownId)
+  if (idx >= 0) {
+    currentIndex.value = idx
+  } else if (currentIndex.value >= list.value.length) {
+    currentIndex.value = Math.max(0, list.value.length - 1)
   }
+  updateDiff()
 }
 
 watch(
@@ -155,16 +163,31 @@ watch(
   }
 )
 
+watch(current, () => {
+  updateDiff()
+})
+
 onMounted(async () => {
+  document.documentElement.classList.add('mini-mode')
+
   await store.loadData()
   const idx = list.value.findIndex((c) => c.id === store.settings.activeCountdownId)
   if (idx >= 0) currentIndex.value = idx
   updateDiff()
+
+  if (window.electronAPI) {
+    removeDataUpdated = window.electronAPI.onDataUpdated(() => {
+      reloadData()
+    })
+  }
+
   timer = window.setInterval(updateDiff, 1000)
 })
 
 onUnmounted(() => {
+  document.documentElement.classList.remove('mini-mode')
   if (timer) clearInterval(timer)
+  if (removeDataUpdated) removeDataUpdated()
 })
 </script>
 

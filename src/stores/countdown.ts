@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import dayjs from 'dayjs'
-import type { CountdownItem, AppSettings, HistoryItem } from '@/types'
+import type { CountdownItem, AppSettings, HistoryItem, InteractiveWallpaperConfig } from '@/types'
 import {
   generateId,
   createDefaultCountdown,
@@ -14,6 +14,52 @@ import {
   type BackupData,
   type EncryptedBackup
 } from '@/utils'
+
+function getDefaultInteractiveConfig(): InteractiveWallpaperConfig {
+  return {
+    particles: {
+      count: 40,
+      minSize: 1,
+      maxSize: 3,
+      speed: 0.5,
+      color: '#ffffff',
+      opacity: 0.6,
+      trailLength: 0
+    },
+    glow: {
+      enabled: true,
+      radius: 200,
+      color: '#7ec8e3',
+      opacity: 0.15,
+      pulseSpeed: 0.02
+    },
+    mouseFollow: {
+      enabled: true,
+      influence: 150,
+      smoothing: 0.08,
+      particleAttraction: 0.3,
+      glowFollow: true
+    },
+    idleDetection: {
+      enabled: true,
+      timeoutMs: 5000,
+      expandedInfoTypes: ['schedule', 'weather', 'quote']
+    },
+    hotZones: [
+      {
+        id: 'hz-new',
+        position: 'bottom-right',
+        size: 80,
+        action: 'new-countdown',
+        label: '新建倒计时',
+        icon: '➕'
+      }
+    ],
+    clickThrough: false,
+    showCountdownClickHint: true,
+    doubleClickOpenMain: true
+  }
+}
 
 export const useCountdownStore = defineStore('countdown', () => {
   const countdowns = ref<CountdownItem[]>([])
@@ -30,7 +76,9 @@ export const useCountdownStore = defineStore('countdown', () => {
     soundEnabled: true,
     notificationEnabled: true,
     displayWidth: 1920,
-    displayHeight: 1080
+    displayHeight: 1080,
+    wallpaperMode: 'static',
+    interactiveConfig: getDefaultInteractiveConfig()
   })
   const loaded = ref(false)
   const expiredNotified = ref<Set<string>>(new Set())
@@ -324,7 +372,9 @@ export const useCountdownStore = defineStore('countdown', () => {
       soundEnabled: true,
       notificationEnabled: true,
       displayWidth: 1920,
-      displayHeight: 1080
+      displayHeight: 1080,
+      wallpaperMode: 'static',
+      interactiveConfig: getDefaultInteractiveConfig()
     }
     saveData()
   }

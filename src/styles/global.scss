@@ -17,6 +17,13 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.mini-mode,
+html.mini-mode body,
+html.mini-mode #app {
+  background: transparent !important;
+  overflow: hidden;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
