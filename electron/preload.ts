@@ -37,7 +37,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('wallpaper:refresh', callback)
   },
 
-  openExternal: (url: string) => ipcRenderer.send('shell:open-external', url)
+  openExternal: (url: string) => ipcRenderer.send('shell:open-external', url),
+
+  selectImageFile: () => ipcRenderer.invoke('dialog:select-image'),
+  saveBackupFile: (content: string, filename: string) =>
+    ipcRenderer.invoke('dialog:save-backup', { content, filename }),
+  openBackupFile: () => ipcRenderer.invoke('dialog:open-backup')
 })
 
 export type ElectronAPI = typeof window.electronAPI

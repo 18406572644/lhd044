@@ -1,4 +1,4 @@
-import type { CountdownItem, WallpaperStyle } from '@/types'
+import type { CountdownItem, WallpaperStyle, WallpaperFilter } from '@/types'
 import { calculateDiff, formatDate, padZero } from '.'
 
 export interface RenderOptions {
@@ -23,6 +23,133 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 function rgba(hex: string, alpha: number): string {
   const { r, g, b } = hexToRgb(hex)
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+function buildFilterString(filter?: WallpaperFilter): string {
+  if (!filter || filter.type === 'none') return 'none'
+  const parts: string[] = []
+  if (filter.blur) parts.push(`blur(${filter.blur}px)`)
+  if (filter.brightness) parts.push(`brightness(${filter.brightness})`)
+  if (filter.contrast) parts.push(`contrast(${filter.contrast})`)
+  if (filter.grayscale) parts.push(`grayscale(${filter.grayscale})`)
+  if (filter.sepia) parts.push(`sepia(${filter.sepia})`)
+  if (filter.saturate) parts.push(`saturate(${filter.saturate})`)
+  if (filter.hueRotate) parts.push(`hue-rotate(${filter.hueRotate}deg)`)
+  return parts.length ? parts.join(' ') : 'none'
+}
+
+export function getDefaultFilter(type: WallpaperFilter['type']): WallpaperFilter {
+  const base: WallpaperFilter = { type }
+  switch (type) {
+    case 'blur':
+      return { ...base, blur: 8 }
+    case 'brightness':
+      return { ...base, brightness: 1.2 }
+    case 'contrast':
+      return { ...base, contrast: 1.3 }
+    case 'grayscale':
+      return { ...base, grayscale: 1 }
+    case 'sepia':
+      return { ...base, sepia: 0.8 }
+    case 'vintage':
+      return { ...base, sepia: 0.4, contrast: 0.9, brightness: 1.05, saturate: 0.8 }
+    case 'cool':
+      return { ...base, hueRotate: 180, saturate: 1.1, brightness: 1.05 }
+    case 'warm':
+      return { ...base, sepia: 0.2, saturate: 1.3, brightness: 1.05 }
+    default:
+      return base
+  }
+}
+
+async function drawBackgroundImage(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  imageSrc: string,
+  filter?: WallpaperFilter,
+  overlayColor?: string,
+  overlayOpacity?: number
+) {
+  try {
+    const img = await loadImage(imageSrc)
+    ctx.save()
+
+    const imgAspect = img.width / img.height
+    const canvasAspect = width / height
+    let drawWidth: number, drawHeight: number, drawX: number, drawY: number
+
+    if (imgAspect > canvasAspect) {
+      drawHeight = height
+      drawWidth = img.width * (height / img.height)
+      drawX = (width - drawWidth) / 2
+      drawY = 0
+    } else {
+      drawWidth = width
+      drawHeight = img.height * (width / img.width)
+      drawX = 0
+      drawY = (height - drawHeight) / 2
+    }
+
+    ctx.filter = buildFilterString(filter)
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+    ctx.filter = 'none'
+    ctx.restore()
+
+    if (overlayColor && overlayOpacity !== undefined && overlayOpacity > 0) {
+      ctx.save()
+      ctx.fillStyle = rgba(overlayColor, overlayOpacity)
+      ctx.fillRect(0, 0, width, height)
+      ctx.restore()
+    }
+  } catch (e) {
+    console.warn('Failed to load background image, falling back to gradient:', e)
+  }
+}
+
+export async function renderWallpaperAsync(canvas: HTMLCanvasElement, options: RenderOptions): Promise<string> {
+  const ctx = canvas.getContext('2d')!
+  const { width, height, countdown, style } = options
+  const diff = calculateDiff(countdown.targetDate)
+
+  canvas.width = width
+  canvas.height = height
+
+  if (countdown.backgroundImage) {
+    await drawBackgroundImage(
+      ctx,
+      width,
+      height,
+      countdown.backgroundImage,
+      countdown.backgroundFilter,
+      countdown.overlayColor,
+      countdown.overlayOpacity
+    )
+  }
+
+  if (!countdown.backgroundImage || countdown.overlayOpacity === undefined || countdown.overlayOpacity < 1) {
+    drawBackground(ctx, width, height, countdown, style, !!countdown.backgroundImage)
+  }
+
+  drawCountdownContent(ctx, width, height, countdown, diff, style)
+
+  if (options.allCountdowns && options.allCountdowns.length > 1) {
+    drawOtherCountdowns(ctx, width, height, options.allCountdowns.filter(c => c.id !== countdown.id && c.showOnWallpaper), style)
+  }
+
+  drawFooter(ctx, width, height, countdown, style)
+
+  return canvas.toDataURL('image/png')
 }
 
 export function renderWallpaper(canvas: HTMLCanvasElement, options: RenderOptions): string {
@@ -50,9 +177,14 @@ function drawBackground(
   width: number,
   height: number,
   countdown: CountdownItem,
-  style: WallpaperStyle
+  style: WallpaperStyle,
+  hasBackgroundImage: boolean = false
 ) {
   const { bgGradientFrom, bgGradientTo } = countdown
+
+  if (hasBackgroundImage) {
+    return
+  }
 
   switch (style) {
     case 'gradient': {

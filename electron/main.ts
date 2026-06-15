@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, Notification } from 'electron'
-import { writeFile, mkdir, readFile, existsSync, unlink } from 'fs'
-import { join, dirname } from 'path'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, Notification, dialog } from 'electron'
+import { writeFile, mkdir, readFile, existsSync, unlink, readFileSync, writeFileSync } from 'fs'
+import { join, dirname, extname } from 'path'
 import { fileURLToPath } from 'url'
 import { exec } from 'child_process'
 
@@ -409,4 +409,77 @@ ipcMain.on('wallpaper:stop-auto-update', () => {
 
 ipcMain.on('shell:open-external', (_e, url: string) => {
   shell.openExternal(url)
+})
+
+ipcMain.handle('dialog:select-image', async () => {
+  const result = await dialog.showOpenDialog({
+    title: '选择背景图片',
+    filters: [
+      { name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'] }
+    ],
+    properties: ['openFile']
+  })
+  if (!result.canceled && result.filePaths.length > 0) {
+    const filePath = result.filePaths[0]
+    try {
+      const data = readFileSync(filePath)
+      const ext = extname(filePath).slice(1).toLowerCase()
+      const mimeMap: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        bmp: 'image/bmp',
+        webp: 'image/webp'
+      }
+      const mime = mimeMap[ext] || 'image/png'
+      return `data:${mime};base64,${data.toString('base64')}`
+    } catch (e) {
+      console.error('Failed to read image:', e)
+      return null
+    }
+  }
+  return null
+})
+
+ipcMain.handle('dialog:save-backup', async (_e, { content, filename }: { content: string; filename: string }) => {
+  const result = await dialog.showSaveDialog({
+    title: '保存备份文件',
+    defaultPath: filename,
+    filters: [
+      { name: '备份文件', extensions: ['json', 'cwbk'] },
+      { name: '所有文件', extensions: ['*'] }
+    ]
+  })
+  if (!result.canceled && result.filePath) {
+    try {
+      writeFileSync(result.filePath, content, 'utf-8')
+      return true
+    } catch (e) {
+      console.error('Failed to save backup:', e)
+      return false
+    }
+  }
+  return false
+})
+
+ipcMain.handle('dialog:open-backup', async () => {
+  const result = await dialog.showOpenDialog({
+    title: '选择备份文件',
+    filters: [
+      { name: '备份文件', extensions: ['json', 'cwbk'] },
+      { name: '所有文件', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  })
+  if (!result.canceled && result.filePaths.length > 0) {
+    try {
+      const content = readFileSync(result.filePaths[0], 'utf-8')
+      return content
+    } catch (e) {
+      console.error('Failed to read backup:', e)
+      return null
+    }
+  }
+  return null
 })

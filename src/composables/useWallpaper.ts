@@ -1,6 +1,6 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useCountdownStore } from '@/stores/countdown'
-import { renderWallpaper } from '@/utils/wallpaperRenderer'
+import { renderWallpaperAsync } from '@/utils/wallpaperRenderer'
 import dayjs from 'dayjs'
 
 export function useWallpaper() {
@@ -20,7 +20,7 @@ export function useWallpaper() {
 
     isGenerating.value = true
     try {
-      const dataUrl = renderWallpaper(canvas.value, {
+      const dataUrl = await renderWallpaperAsync(canvas.value, {
         width: store.settings.displayWidth,
         height: store.settings.displayHeight,
         countdown,

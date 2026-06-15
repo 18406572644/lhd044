@@ -43,6 +43,10 @@ interface ElectronAPI {
   onWallpaperRefresh: (callback: () => void) => () => void
 
   openExternal: (url: string) => void
+
+  selectImageFile: () => Promise<string | null>
+  saveBackupFile: (content: string, filename: string) => Promise<boolean>
+  openBackupFile: () => Promise<string | null>
 }
 
 interface Window {

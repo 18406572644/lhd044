@@ -156,6 +156,106 @@
 
       <section class="setting-card">
         <h3 class="card-title">
+          <n-icon><DatabaseOutlined /></n-icon>
+          数据管理
+        </h3>
+        <div class="setting-list">
+          <div class="stats-row">
+            <div class="stat-item">
+              <div class="stat-value">{{ statistics.totalCountdowns }}</div>
+              <div class="stat-label">总倒计时</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ statistics.activeCountdowns }}</div>
+              <div class="stat-label">进行中</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ statistics.historyItems }}</div>
+              <div class="stat-label">历史记录</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ statistics.wallpapersWithImage }}</div>
+              <div class="stat-label">自定义背景</div>
+            </div>
+          </div>
+
+          <n-divider style="margin: 4px 0" />
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">导出 JSON 备份</div>
+              <div class="setting-desc">导出所有数据为可读的 JSON 格式文件</div>
+            </div>
+            <n-space>
+              <n-button size="small" @click="handleExportJSON">
+                <template #icon>
+                  <n-icon><ExportOutlined /></n-icon>
+                </template>
+                导出 JSON
+              </n-button>
+            </n-space>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">导出加密备份</div>
+              <div class="setting-desc">使用密码加密所有数据，安全性更高</div>
+            </div>
+            <n-button size="small" type="primary" ghost @click="showEncryptExportModal = true">
+              <template #icon>
+                <n-icon><LockOutlined /></n-icon>
+              </template>
+              加密导出
+            </n-button>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">导入备份</div>
+              <div class="setting-desc">从备份文件恢复数据，可选择合并或覆盖</div>
+            </div>
+            <n-space>
+              <n-button size="small" v-if="hasElectron" @click="handleImportWithDialog">
+                <template #icon>
+                  <n-icon><FolderOpenOutlined /></n-icon>
+                </template>
+                选择文件
+              </n-button>
+              <n-button size="small" @click="triggerImportInput">
+                <template #icon>
+                  <n-icon><ImportOutlined /></n-icon>
+                </template>
+                导入
+              </n-button>
+            </n-space>
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".json,.cwbk"
+              style="display: none"
+              @change="handleImportFileChange"
+            />
+          </div>
+
+          <n-divider style="margin: 4px 0" />
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label danger">重置应用</div>
+              <div class="setting-desc danger">清除所有数据，恢复到初始状态（此操作不可撤销）</div>
+            </div>
+            <n-button size="small" type="error" ghost @click="showResetConfirm = true">
+              <template #icon>
+                <n-icon><DeleteOutlined /></n-icon>
+              </template>
+              重置
+            </n-button>
+          </div>
+        </div>
+      </section>
+
+      <section class="setting-card">
+        <h3 class="card-title">
           <n-icon><InfoCircleOutlined /></n-icon>
           关于
         </h3>
@@ -178,11 +278,114 @@
         </div>
       </section>
     </div>
+
+    <n-modal
+      v-model:show="showEncryptExportModal"
+      preset="card"
+      title="加密导出备份"
+      style="width: 420px"
+      :mask-closable="false"
+    >
+      <n-form :model="encryptForm" label-placement="top">
+        <n-form-item label="设置密码">
+          <n-input
+            v-model:value="encryptForm.password"
+            type="password"
+            show-password-on="click"
+            placeholder="请输入密码"
+          />
+        </n-form-item>
+        <n-form-item label="确认密码">
+          <n-input
+            v-model:value="encryptForm.confirmPassword"
+            type="password"
+            show-password-on="click"
+            placeholder="请再次输入密码"
+          />
+        </n-form-item>
+        <p class="form-tip">请妥善保管密码，密码丢失将无法恢复备份数据</p>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showEncryptExportModal = false">取消</n-button>
+          <n-button type="primary" :disabled="isExporting" @click="handleEncryptExport">
+            {{ isExporting ? '导出中...' : '确认导出' }}
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal
+      v-model:show="showImportModal"
+      preset="card"
+      title="导入备份"
+      style="width: 460px"
+      :mask-closable="false"
+    >
+      <div class="import-info" v-if="importFileInfo">
+        <div class="import-file-name">
+          <n-icon size="18"><FileOutlined /></n-icon>
+          <span>{{ importFileInfo.name }}</span>
+        </div>
+        <div class="import-file-type">
+          类型：{{ importFileInfo.encrypted ? '加密备份' : 'JSON 备份' }}
+          <span v-if="importFileInfo.exportedAt"> · 导出时间：{{ importFileInfo.exportedAt }}</span>
+        </div>
+      </div>
+      <n-form :model="importForm" label-placement="top" style="margin-top: 16px">
+        <n-form-item label="导入方式">
+          <n-radio-group v-model:value="importForm.mode">
+            <n-space vertical>
+              <n-radio value="merge">
+                <span class="radio-title">合并模式</span>
+                <span class="radio-desc">将备份中的数据与现有数据合并，不会删除已有内容</span>
+              </n-radio>
+              <n-radio value="overwrite">
+                <span class="radio-title">覆盖模式</span>
+                <span class="radio-desc">删除所有现有数据，完全替换为备份中的内容</span>
+              </n-radio>
+            </n-space>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item v-if="needImportPassword" label="请输入加密密码">
+          <n-input
+            v-model:value="importForm.password"
+            type="password"
+            show-password-on="click"
+            placeholder="备份文件的解密密码"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="cancelImport">取消</n-button>
+          <n-button type="primary" :disabled="isImporting" @click="handleConfirmImport">
+            {{ isImporting ? '导入中...' : '确认导入' }}
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal
+      v-model:show="showResetConfirm"
+      preset="dialog"
+      title="确认重置应用"
+      positive-text="确认重置"
+      negative-text="取消"
+      :positive-button-props="{ type: 'error' }"
+      @positive-click="handleResetApp"
+    >
+      <div class="reset-warning">
+        <n-icon size="32" color="#f56c6c"><WarningOutlined /></n-icon>
+        <p>此操作将删除所有倒计时、历史记录和设置，恢复到初始状态。</p>
+        <p class="strong">此操作不可撤销，建议先导出备份！</p>
+      </div>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NButton,
@@ -190,21 +393,56 @@ import {
   NSwitch,
   NSelect,
   NInputNumber,
-  type SelectOption
+  NDivider,
+  NModal,
+  NForm,
+  NFormItem,
+  NInput,
+  NSpace,
+  NRadioGroup,
+  NRadio,
+  type SelectOption,
+  type MessageReactive
 } from 'naive-ui'
 import {
   ArrowLeftOutlined,
   DesktopOutlined,
   BellOutlined,
   SettingOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  DatabaseOutlined,
+  ExportOutlined,
+  ImportOutlined,
+  LockOutlined,
+  FolderOpenOutlined,
+  DeleteOutlined,
+  FileOutlined,
+  WarningOutlined
 } from '@vicons/antd'
 import { useCountdownStore } from '@/stores/countdown'
+import { readFileAsText } from '@/utils'
+import { useMessage } from 'naive-ui'
 
 const router = useRouter()
 const store = useCountdownStore()
+const message = useMessage()
+
+const hasElectron = computed(() => typeof window !== 'undefined' && !!(window as any).electronAPI)
 
 const autoStart = ref(false)
+
+const statistics = reactive({
+  totalCountdowns: 0,
+  activeCountdowns: 0,
+  expiredCountdowns: 0,
+  historyItems: 0,
+  wallpapersWithImage: 0
+})
+
+async function updateStatistics() {
+  const stats = await store.getStatistics()
+  Object.assign(statistics, stats)
+}
 
 const styleOptions: SelectOption[] = [
   { label: '渐变风格', value: 'gradient' },
@@ -221,6 +459,26 @@ const intervalOptions: SelectOption[] = [
   { label: '每分钟', value: 60000 },
   { label: '每 5 分钟', value: 300000 }
 ]
+
+const showEncryptExportModal = ref(false)
+const encryptForm = reactive({
+  password: '',
+  confirmPassword: ''
+})
+const isExporting = ref(false)
+
+const showImportModal = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
+const pendingImportContent = ref<string | null>(null)
+const importFileInfo = ref<{ name: string; encrypted: boolean; exportedAt?: string } | null>(null)
+const needImportPassword = ref(false)
+const importForm = reactive({
+  mode: 'merge' as 'merge' | 'overwrite',
+  password: ''
+})
+const isImporting = ref(false)
+
+const showResetConfirm = ref(false)
 
 async function handleAutoStartChange(value: boolean) {
   if (window.electronAPI) {
@@ -255,13 +513,156 @@ function goBack() {
   router.push('/')
 }
 
+async function handleExportJSON() {
+  const useDialog = !!window.electronAPI
+  const success = await store.exportDataJSON(useDialog)
+  if (success) {
+    message.success('JSON 备份导出成功')
+  } else {
+    message.error('导出失败，请重试')
+  }
+}
+
+async function handleEncryptExport() {
+  if (!encryptForm.password) {
+    message.warning('请输入密码')
+    return
+  }
+  if (encryptForm.password.length < 4) {
+    message.warning('密码至少 4 位')
+    return
+  }
+  if (encryptForm.password !== encryptForm.confirmPassword) {
+    message.warning('两次输入的密码不一致')
+    return
+  }
+
+  isExporting.value = true
+  try {
+    const useDialog = !!window.electronAPI
+    const success = await store.exportDataEncrypted(encryptForm.password, useDialog)
+    if (success) {
+      message.success('加密备份导出成功')
+      showEncryptExportModal.value = false
+      encryptForm.password = ''
+      encryptForm.confirmPassword = ''
+    } else {
+      message.error('导出失败，请重试')
+    }
+  } catch (e) {
+    message.error('加密过程出错')
+  } finally {
+    isExporting.value = false
+  }
+}
+
+function triggerImportInput() {
+  importFileInput.value?.click()
+}
+
+async function handleImportFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    await processImportFile(file.name, await readFileAsText(file))
+  }
+  input.value = ''
+}
+
+async function handleImportWithDialog() {
+  if (!window.electronAPI) return
+  const content = await window.electronAPI.openBackupFile()
+  if (content) {
+    await processImportFile('备份文件', content)
+  }
+}
+
+async function processImportFile(fileName: string, content: string) {
+  pendingImportContent.value = content
+
+  let parsed: any = null
+  let encrypted = false
+  let exportedAt: string | undefined
+
+  try {
+    parsed = JSON.parse(content)
+    encrypted = parsed?.encrypted === true
+    if (parsed?.exportedAt) {
+      exportedAt = new Date(parsed.exportedAt).toLocaleString('zh-CN')
+    }
+  } catch {
+    message.error('文件格式无效，无法解析')
+    return
+  }
+
+  importFileInfo.value = {
+    name: fileName,
+    encrypted,
+    exportedAt
+  }
+  needImportPassword.value = encrypted
+  importForm.mode = 'merge'
+  importForm.password = ''
+  showImportModal.value = true
+}
+
+function cancelImport() {
+  showImportModal.value = false
+  pendingImportContent.value = null
+  importFileInfo.value = null
+  needImportPassword.value = false
+}
+
+async function handleConfirmImport() {
+  if (!pendingImportContent.value) return
+
+  isImporting.value = true
+  try {
+    const result = await store.importData(
+      pendingImportContent.value,
+      importForm.mode,
+      needImportPassword.value ? importForm.password : undefined
+    )
+
+    if (result.success) {
+      message.success(`导入成功${result.encrypted ? '（已解密）' : ''}`)
+      await updateStatistics()
+      cancelImport()
+    } else if (result.needPassword) {
+      message.warning('请输入密码')
+    } else if (result.error) {
+      message.error(result.error)
+    } else {
+      message.error('导入失败')
+    }
+  } catch (e: any) {
+    message.error(e.message || '导入失败')
+  } finally {
+    isImporting.value = false
+  }
+}
+
+function handleResetApp() {
+  store.resetApp()
+  updateStatistics()
+  message.success('应用已重置')
+}
+
 onMounted(async () => {
   await store.loadData()
+  await updateStatistics()
   if (window.electronAPI) {
     const settings = await window.electronAPI.getLoginSettings()
     autoStart.value = settings?.openAtLogin || false
   }
 })
+
+watch(
+  () => [store.countdowns.length, store.history.length],
+  () => {
+    updateStatistics()
+  }
+)
 
 watch(
   () => [store.settings],
@@ -339,6 +740,14 @@ watch(
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
+
+  .setting-label.danger {
+    color: #f56c6c;
+  }
+  .setting-desc.danger {
+    color: #f56c6c;
+    opacity: 0.85;
+  }
 }
 
 .setting-info {
@@ -363,6 +772,103 @@ watch(
   font-weight: 500;
   color: $color-primary-dark;
   font-family: 'SF Mono', 'Monaco', monospace;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 12px 8px;
+  background: $color-bg;
+  border-radius: $radius-md;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: $color-primary;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: $color-text-muted;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: $color-text-muted;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.import-info {
+  padding: 12px;
+  background: $color-bg;
+  border-radius: $radius-md;
+  margin-bottom: 8px;
+}
+
+.import-file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: $color-text;
+  margin-bottom: 4px;
+
+  :deep(.n-icon) {
+    color: $color-primary;
+  }
+}
+
+.import-file-type {
+  font-size: 12px;
+  color: $color-text-muted;
+  padding-left: 26px;
+}
+
+.radio-title {
+  display: inline-block;
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.radio-desc {
+  display: block;
+  font-size: 12px;
+  color: $color-text-muted;
+  padding-left: 24px;
+  margin-top: -2px;
+}
+
+.reset-warning {
+  text-align: center;
+  padding: 12px;
+
+  :deep(.n-icon) {
+    margin-bottom: 12px;
+  }
+
+  p {
+    margin: 8px 0;
+    color: $color-text;
+    font-size: 14px;
+  }
+
+  p.strong {
+    font-weight: 600;
+    color: #f56c6c;
+  }
 }
 
 .about-content {
@@ -399,6 +905,9 @@ watch(
 @media (max-width: 900px) {
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

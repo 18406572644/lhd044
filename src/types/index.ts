@@ -1,3 +1,25 @@
+export type WallpaperFilterType =
+  | 'none'
+  | 'blur'
+  | 'brightness'
+  | 'contrast'
+  | 'grayscale'
+  | 'sepia'
+  | 'vintage'
+  | 'cool'
+  | 'warm'
+
+export interface WallpaperFilter {
+  type: WallpaperFilterType
+  blur?: number
+  brightness?: number
+  contrast?: number
+  grayscale?: number
+  sepia?: number
+  saturate?: number
+  hueRotate?: number
+}
+
 export interface CountdownItem {
   id: string
   title: string
@@ -9,6 +31,9 @@ export interface CountdownItem {
   bgGradientFrom: string
   bgGradientTo: string
   backgroundImage?: string
+  backgroundFilter?: WallpaperFilter
+  overlayColor?: string
+  overlayOpacity?: number
   fontSize: number
   showOnWallpaper: boolean
   showOnMini: boolean
